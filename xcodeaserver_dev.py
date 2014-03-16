@@ -48,9 +48,31 @@ def clog(data):
 def rlog(data):
 	print(data)
 
+def get_ldtbuildpath(proj):
+	bppath = path.join(projectsRoot,proj,ldtbuildpath)
+	if not path.isfile(bppath): return None
+	bp=etree.parse(open(bppath))
+	if bp: 
+		root = bp.getroot()
+		if root.tag=='buildpath':
+			return root
+	error('.buildpath file is malformed or unknown format!')
+	return None
+
+def write_ldtbuildpath(bp,proj):
+	bp.getroottree().write(open(path.join(projectsRoot,proj,ldtbuildpath),'w'),xml_declaration=True,encoding='UTF-8',pretty_print=True)
+
+def flush_cache():
+	f=open(cachefile,'w')
+	json.dump(cache,f)
+	f.close()
+
+#------------------------ http methods
+#-------------------------------------
+
 def do_GET(httpd):
 	if httpd.path=='/poll':
-		send_changes(httpd)
+		do_poll(httpd)
 	elif httpd.path=='/connect':
 		do_connect(httpd)
 	else:
@@ -93,6 +115,8 @@ def do_POST(httpd):
 		httpd.send_response(500)
 	httpd.end_headers()
 
+#----------------------------------------------
+#----------------------------------------------
 
 def do_connect(httpd):
 	log('Client connected to project '+project)
@@ -104,7 +128,7 @@ def do_connect(httpd):
 		flush_cache()
 	deps = sorted(cache[project]['dependencies'])
 	httpd.send_response(200)
-	httpd.send_header('pollinginterval',pollingInterval)
+	httpd.send_header('polling',pollingInterval)
 	if logging:	httpd.send_header('logging','true')
 	if watches: httpd.send_header('watches','true')
 	if overwrite: httpd.send_header('overwrite','true')
@@ -118,42 +142,6 @@ def do_connect(httpd):
 			data = data + proj+':'+file+':' + chk + ':'
 	httpd.send_header('checksums',data)
 	httpd.end_headers()
-
-def get_ldtbuildpath(proj):
-	bppath = path.join(projectsRoot,proj,ldtbuildpath)
-	if not path.isfile(bppath): return None
-	bp=etree.parse(open(bppath))
-	if bp: 
-		root = bp.getroot()
-		if root.tag=='buildpath':
-			return root
-	error('.buildpath file is malformed or unknown format!')
-	return None
-
-def write_ldtbuildpath(bp,proj):
-	bp.getroottree().write(open(path.join(projectsRoot,proj,ldtbuildpath),'w'),xml_declaration=True,encoding='UTF-8',pretty_print=True)
-
-def calc_checksum(proj):
-	vlog('Calculating checksums for project '+proj)
-	base = path.normpath(path.join(projectsRoot,proj,srcdir))
-	if not path.isdir(base):
-		log('Project %s does not have a src directory! Creating it.' % project)
-		os.mkdir(base)
-	for filename in [f for f in listdir(base) if path.isfile(path.join(base,f)) and not f.startswith('.')]:
-
-		fname, ext = path.splitext(filename)
-		file_path = path.join(base,filename)
-		if ext=='.lua':
-			str = open(file_path).read()
-			chk = adler32(str)
-			cfg.set(proj,filename,chk)
-			vlog('File '+filename+': '+chk)
-			checksums[proj+':'+fname] = chk
-
-def flush_cache():
-	f=open(cachefile,'w')
-	json.dump(cache,f)
-	f.close()
 
 def do_set_dependencies(httpd):
 	proj = httpd.headers.getheader('project')
@@ -233,7 +221,7 @@ def do_delete(httpd):
 	log('File %s deleted' % filepath)
 
 
-def	send_changes(httpd):
+def	do_poll(httpd):
 	global counter
 	#sys.stdout.write('-\\|/'[counter]+'\b')
 	sys.stdout.write('- '[counter]+'\b')
@@ -293,6 +281,20 @@ def	send_changes(httpd):
 		httpd.send_header('delete',tabpath)
 		httpd.end_headers()
 		return
+	evalpath = path.normpath(path.join(projectsRoot,'eval.luac'))
+	if path.isfile(evalpath):
+		file = open(evalpath)
+		data = file.read()
+		file.close()
+		vlog('Sendin eval request')
+		httpd.send_response(200)
+		httpd.send_header('project',project)
+		httpd.send_header('eval','true')
+		httpd.send_header('content-length',len(data))
+		httpd.end_headers()
+		httpd.wfile.write(data)
+		os.remove(evalpath)
+		return
 
 	httpd.send_response(204)
 	httpd.end_headers()
@@ -341,37 +343,4 @@ def do_file_deleted(httpd):
 	log('File deleted successfully: '+tabname)
 	httpd.send_response(200)
 	httpd.end_headers()
-
-
-def garb():
-	checksums=dict()
-	cfg.read(cachefile)
-	if not cfg.has_section(project):
-		cfg.add_section(project)
-	if not cfg.has_option(project,'dependencies'):
-		cfg.set(project,'dependencies','')
-	for dep in cfg.get(project,'dependencies').split(':'):
-		deps.add(dep)
-	bppath = path.join(projectsRoot,project,ldtbuildpath)
-	if path.isfile(bppath):
-		bp = get_ldtbuildpath(project)
-		if (bp.getroot().tag=='buildpath'):
-			vlog('Project '+project+' has LDT buildpath')
-			deps = set() # disregard local cache
-			cfg.set(project,'ldtbuildpath',"True")
-			for e in bp.iter('buildpathentry'):
-				if e.get('kind')=='prj':
-					dep = e.get('path')
-					if dep.startswith('/'): dep = dep[1:]
-					vlog('LDT project dependency found: '+dep)
-					deps.add(dep)
-			#write_ldtbuildpath(bp,project)
-			cfg.set(project,'dependencies',':'.join(deps))
-
-	calc_checksum(project)
-	for dep in deps:
-		if not cfg.has_section(dep):
-			cfg.add_section(dep)
-		calc_checksum(dep)
-	flush_cfg()
 
