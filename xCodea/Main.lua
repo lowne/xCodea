@@ -122,6 +122,7 @@ function xc.eval(code,name,env)
 	env = env or xCodea._SANDBOX
 	local success, error = loadstring(code,name)
 	if not success then
+		xc.xlog('error in loadstring')
 		return xc.sandbox_error(error)
 	end
 	setfenv(success,env)
@@ -136,24 +137,27 @@ function xc.eval(code,name,env)
 	end
 end
 function xc.sandbox_error(err)
+	tween.stop(xc.tween)
 	xc.log_error(err,true)
 	draw = function()
-		if xCodea._SANDBOX.draw then
-			pcall(xCodea._SANDBOX.draw)
-		else
-		end
+		--if xCodea._SANDBOX.draw then
+		--	pcall(xCodea._SANDBOX.draw)
+		--else
+		--end
 		background(40)
 		xc.draw_status()
 	end
 	--TODO this must be reset once we get a new eval from the http server
 end
 function xc.error_handler(err)
+	--err=err..debug.traceback()
 	err=err..debug.traceback('',2):gsub('%[C%]:.*','')
 	xc.sandbox_error(err)
 end
 
 
 function xc.draw_status()
+	pushStyle()
 	textMode(CORNER)
 	textAlign(LEFT)
 	fontSize(18)
@@ -170,6 +174,7 @@ function xc.draw_status()
 	fontSize(80)
 	text('xCodea',WIDTH/2,HEIGHT-40)
 	if xc.error then fill(255,0,0,60) rect(0,0,WIDTH,HEIGHT) end
+	popStyle()
 end
 
 function xc.null() end
@@ -338,8 +343,8 @@ function xc.poll()
 	local function success(data,status,headers)
 		if status~=200 and status~=204 then xc.log_error('Received status '..status) return end
 		if status==204 then
-			if xc.make_sandbox() then
-			--print('sandbox finished')
+			if not xc.error then
+				xc.make_sandbox()
 			end
 			xc.tween = tween.delay(xc.polling_interval,xc.poll)
 			return
@@ -364,6 +369,7 @@ function xc.poll()
 			end
 			local i=InfoPlist(xc.project)
 			i:setDependencies(remotedeps)
+			xc.error = nil
 			local function dep_success(data,status,headers)
 				if status~=200 then xc.log_error('Received status '..status) return end
 				return xc.poll()
@@ -373,9 +379,11 @@ function xc.poll()
 		end
 		local eval = headers['eval']
 		if eval then
+			xc.error = nil
 			local name=#data>23 and data:sub(1,20)..'...' or data
 			name=name:gsub('\n',' ')
 			xc.xlog('Received eval request: '..name)
+			tween.stop(xc.tween)
 			xc.tween = tween.delay(xc.polling_interval,xc.poll)
 			return xc.eval(data,name)
 		end
@@ -393,7 +401,10 @@ function xc.poll()
 			end
 			saveProjectTab(file or delete,file and data or nil)
 
-			if proj==xc.project or name~='Main' then xc.to_sandbox[file or delete] = (file and true or nil) end
+			if proj==xc.project or name~='Main' then
+				xc.error = nil
+				xc.to_sandbox[file or delete] = (file and true or nil)
+			end
 			local function file_success(data,status,headers)
 				if status~=200 then xc.log_error('Received status '..status) return end
 				return xc.poll()

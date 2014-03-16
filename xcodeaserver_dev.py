@@ -27,7 +27,13 @@ def error(data):
 		os.system('terminal-notifier -title "xCodea server" -sound Sosumi -group xCodea.error -message "\\%s" > /dev/null'% (data.replace('"','\\"')))
 
 def rerror(data):
-	sys.stderr.write(data)
+	for match in re.finditer('\[string "::(.+)"\]',data):
+		snippet = match.group(1)
+		proj,file = snippet.split(':')
+		filename = path.normpath(path.join(projectsRoot,proj,srcdir,file+'.lua'))
+		data = data.replace(match.group(0),filename)
+
+	sys.stderr.write(data+'\n')
 	if notify:
 		os.system('terminal-notifier -title "xCodea ERROR" -sound Sosumi -group xCodea.error -message "\\%s" > /dev/null'% (data.replace('"','\\"')))
 
@@ -286,7 +292,7 @@ def	do_poll(httpd):
 		file = open(evalpath)
 		data = file.read()
 		file.close()
-		vlog('Sendin eval request')
+		vlog('Sending eval request')
 		httpd.send_response(200)
 		httpd.send_header('project',project)
 		httpd.send_header('eval','true')
