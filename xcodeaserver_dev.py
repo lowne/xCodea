@@ -39,7 +39,7 @@ def rerror(data):
 
 def vlog(data):
 	if verbose:
-		print(data)
+		print('[server] '+data)
 
 def log(data):
 	print('[server] '+data)

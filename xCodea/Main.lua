@@ -38,6 +38,7 @@ xc.projects = xc.projects or {}
 xc.tween = xc.tween or tween.delay(0.01,function()end)
 xc.status = xc.status or ''
 xc.to_sandbox = xc.to_sandbox or {}
+xc.safe_print = print
 --xc.sandbox_started = xc.sandbox_started or false
 
 ---@function make_sandbox [parent=#xc]
@@ -182,7 +183,7 @@ function xc.null() end
 function xc.log_error(s,is_sandbox)
 	xc.error = s
 	s='[client] '..(is_sandbox and 'runtime 'or'')..'error: '..s
-	print(s)
+	xc.safe_print(s)
 	http.request(xCodea_server..'/error',xc.null,xc.null,{method=POST,data=s})
 	-- TODO
 end
@@ -193,7 +194,7 @@ function xc.fatal_error(s)
 end
 
 function xc.log(s)
-	print(s)
+	xc.safe_print(s)
 	http.request(xCodea_server..'/log',xc.null,xc.null,{method=POST,data=s})
 	-- TODO
 end
@@ -201,12 +202,12 @@ end
 function xc.xlog(s)
 	xc.status = xc.status..s..'\n'
 	s='[client] '..s
-	print(s)
+	xc.safe_print(s)
 	http.request(xCodea_server..'/msg',xc.null,xc.null,{method=POST,data=s})
 end
 
 function xc.vlog(s)
-	print(s)
+	xc.safe_print(s)
 end
 
 function xc.try_connect()
@@ -227,7 +228,7 @@ end
 
 function xc.connection_error(err)
 	xc.error = 'Connection error! '..(err or '')
-	print(xc.error)
+	xc.safe_print(xc.error)
 	-- do nothing, must restart manually
 end
 
@@ -247,7 +248,7 @@ function xc.connected(data,status,headers)
 		xc.fatal_error('Invalid data received! (missing project)')
 		return
 	end
-	local i = InfoPlist(proj)
+	local i = xc.InfoPlist(proj)
 	if not i:exists() then
 		xc.fatal_error('Project "'..proj..'" does not exist in Codea! '..
 			'Please restart the xCodea server with an appropriate project.\n'..
@@ -262,8 +263,14 @@ function xc.connected(data,status,headers)
 	xc.error=nil
 	xc.polling_interval = tonumber(headers['polling']) or 1
 	xc.remote_logging = headers['logging']
-	xc.remote_watches = headers['watches']
-	xc.server_overwrites = headers['overwrite']
+	xc.remote_watches = headers['watches'] --TODO
+	xc.server_overwrites = headers['overwrite'] --TODO
+	--- injections
+	if xc.remote_logging then
+		xc.old_print = xc.old_print or print
+		print = function(...) xc.log(table.concat(arg or {},' ')) end
+	end
+	xc.safe_print = xc.remote_logging and xc.old_print or print
 
 	xc.projects = i:getDependencies()
 	local localdeps = table.concat(xc.projects,':')
@@ -346,6 +353,7 @@ function xc.poll()
 			if not xc.error then
 				xc.make_sandbox()
 			end
+			tween.stop(xc.tween)
 			xc.tween = tween.delay(xc.polling_interval,xc.poll)
 			return
 		end
@@ -357,7 +365,7 @@ function xc.poll()
 			xc.xlog('Received new dependencies: '..deps)
 			local remotedeps = {}
 			for dep in (deps..':'):gmatch('(.-):') do
-				local i=InfoPlist(dep)
+				local i=xc.InfoPlist(dep)
 				if not i:exists() then
 					xc.fatal_error('Dependency "'..dep..'" that was added\n'..
 						'on the server does not exist in Codea!\n'..
@@ -367,7 +375,7 @@ function xc.poll()
 				end
 				table.insert(remotedeps,dep)
 			end
-			local i=InfoPlist(xc.project)
+			local i=xc.InfoPlist(xc.project)
 			i:setDependencies(remotedeps)
 			xc.error = nil
 			local function dep_success(data,status,headers)
@@ -392,7 +400,7 @@ function xc.poll()
 		if file or delete then
 			local proj,name=(file or delete):match('(.-):(.+)')
 			xc.xlog('Received '..(file and 'updated' or 'deleted')..' file: '..proj..':'..name)
-			local i=InfoPlist(proj)
+			local i=xc.InfoPlist(proj)
 			if not i:exists() then
 				xc.fatal_error('Project "'..proj..'" does not exist in Codea!\n'..
 					'xCodea cannot create new projects in Codea, so you must do it manually.\n'..
@@ -444,18 +452,18 @@ xCodea.restart = function()
 end
 
 -- INFOPLIST ----------------------------------
-InfoPlist=class()
+xc.InfoPlist=class()
 
-function InfoPlist:init(projectName)
+function xc.InfoPlist:init(projectName)
 	self.path = os.getenv('HOME') .. '/Documents/'..projectName..'.codea/Info.plist'
 end
-function InfoPlist:exists()
+function xc.InfoPlist:exists()
 	local file = io.open(self.path,'r')
 	if file then file:close() return true end
 	return false
 end
 
-function InfoPlist:_getAll()
+function xc.InfoPlist:_getAll()
 	local file = io.open(self.path,'r')
 	local plist
 	if file then
@@ -470,7 +478,7 @@ function InfoPlist:_getAll()
 	return plist
 end
 
-function InfoPlist:getDependencies()
+function xc.InfoPlist:getDependencies()
 	local plist=self:_getAll() or ''
 	local deps=plist:match('Dependencies</key><array>(.-)</array>') or ''
 	local found={}
@@ -483,7 +491,7 @@ function InfoPlist:getDependencies()
 end
 
 
-function InfoPlist:setDependencies(dependencies)
+function xc.InfoPlist:setDependencies(dependencies)
 	local plist=self:_getAll()
 	if not plist then print('Cannot find project\'s Info.plist file') return end
 
