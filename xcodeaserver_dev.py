@@ -27,7 +27,7 @@ def error(data):
 		os.system('terminal-notifier -title "xCodea server" -sound Sosumi -group xCodea.error -message "\\%s" > /dev/null'% (data.replace('"','\\"')))
 
 def rerror(data):
-	for match in re.finditer('\[string "::(.+)"\]',data):
+	for match in re.finditer('\[string "::(.+?)"\]',data):
 		snippet = match.group(1)
 		proj,file = snippet.split(':')
 		filename = path.normpath(path.join(projectsRoot,proj,srcdir,file+'.lua'))

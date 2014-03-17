@@ -7,8 +7,22 @@ local xCodea_server = 'http://192.168.1.100:49374'
 ----------------------------------------------------------
 
 
-xCodea = {_SANDBOX = setmetatable({}, {__index=_G})}
-local xc=xc or {}
+xCodea = {_SANDBOX = setmetatable({
+	draw = function() end,
+	touched = function(_) end,
+	keyboard = function(_) end,
+	orientationChanged = function(_) end,
+	collide = function(_) end,
+	loadstring = function(code,name)
+		local success, error = _G.loadstring(code,name)
+		if success then
+			setfenv(success, xCodea._SANDBOX)
+		end
+		return success,error
+	end,
+-- FIXME dofile(file) breaks the sandbox. if necessary (is it ever used?) find a way to wrap it
+}, {__index=_G})}
+local xc=xc or {} -- #xc
 xc.polling_interval = 1
 xc.remote_logging = true
 xc.remote_watches = false
@@ -24,13 +38,13 @@ xc.safe_print = print
 ---@function make_sandbox [parent=#xc]
 --@param #string i the last tab that got sandboxed (or nil)
 --@return #boolean true if all tabs were sandboxed correctly
-function xc.make_sandbox(i)
-	local tab = next(xc.to_sandbox,i) -- #string
+function xc.make_sandbox()
+	local tab = xc.to_sandbox[1]
 	if not tab then
 		if xc.sandbox_started then return true end
 		return xc.start_sandbox()
 	end
-	xc.to_sandbox[tab]=nil
+	table.remove(xc.to_sandbox,1)
 	xc.xlog('Running eval for tab '..tab)
 	-- FIXME xCodea:Main below is never received (stack overflow!)
 	if xc.eval(readProjectTab(tab),'::'..tab,tab=='xCodea:Main' and _G or nil) then
@@ -50,33 +64,25 @@ function xc.start_sandbox()
 end
 
 function xc.run_sandbox()
+	-- these used to be wrapped in: if xCodea._SANDBOX.draw ~= _G.draw then
+	-- having them declared in the sandbox a priori makes it unnecessary
+	-- but i'm keeping the reference, you never know
 	draw = function()
-		if xCodea._SANDBOX.draw ~= _G.draw then
-			xpcall(xCodea._SANDBOX.draw,xc.error_handler)
-		end
+		xpcall(xCodea._SANDBOX.draw,xc.error_handler)
 	end
 	touched = function(touch)
-		if xCodea._SANDBOX.touched ~= _G.touched then
-			xpcall(function() xCodea._SANDBOX.touched(touch) end, xc.error_handler)
-		end
+		xpcall(function() xCodea._SANDBOX.touched(touch) end, xc.error_handler)
 	end
 	--	print(_G.touched,xCodea._SANDBOX.touched,rawget(xCodea._SANDBOX,touched))
 	keyboard = function(key)
-		if xCodea._SANDBOX.keyboard ~= _G.keyboard then
-			xpcall(function() xCodea._SANDBOX.keyboard(key) end, xc.error_handler)
-		end
-	end
-	collide = function(contact)
-		if xCodea._SANDBOX.collide ~= _G.collide then
-			xpcall(function() xCodea._SANDBOX.collide(contact) end, xc.error_handler)
-		end
+		xpcall(function() xCodea._SANDBOX.keyboard(key) end, xc.error_handler)
 	end
 	orientationChanged = function(newOrientation)
-		if xCodea._SANDBOX.orientationChanged ~= _G.orientationChanged then
-			xpcall(function() xCodea._SANDBOX.orientationChanged(newOrientation) end, xc.error_handler)
-		end
+		xpcall(function() xCodea._SANDBOX.orientationChanged(newOrientation) end, xc.error_handler)
 	end
-
+	collide = function(contact)
+		xpcall(function() xCodea._SANDBOX.collide(contact) end, xc.error_handler)
+	end
 	xc.vlog('Sandbox (re)started')
 	return true
 end
@@ -249,7 +255,7 @@ function xc.connected(data,status,headers)
 		local pfiles = listProjectTabs(proj)
 		for _,pfile in pairs(pfiles) do
 			local file = proj..':'..pfile
-			if proj==xc.project or pfile~='Main' then xc.to_sandbox[file] = true end
+			if proj==xc.project or pfile~='Main' then table.insert(xc.to_sandbox,file) end
 			local chk = xc.adler32(readProjectTab(file))
 			if chk ~= remotefiles[file] then
 				sendfiles[file] = true
@@ -373,7 +379,7 @@ function xc.poll()
 
 			if proj==xc.project or name~='Main' then
 				xc.error = nil
-				xc.to_sandbox[file or delete] = (file and true or nil)
+				if file then table.insert(xc.to_sandbox,file) end
 			end
 			local function file_success(data,status,headers)
 				if status~=200 then xc.log_error('Received status '..status) return end
