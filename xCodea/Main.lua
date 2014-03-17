@@ -33,7 +33,6 @@ xc.projects = xc.projects or {}
 xc.tween = xc.tween or tween.delay(0.01,function()end)
 xc.status = xc.status or ''
 xc.to_sandbox = xc.to_sandbox or {}
-xc.safe_print = print
 
 ---@function make_sandbox [parent=#xc]
 --@param #string i the last tab that got sandboxed (or nil)
@@ -151,9 +150,8 @@ function xc.null() end
 function xc.log_error(s,is_sandbox)
 	xc.error = s
 	s='[client] '..(is_sandbox and 'runtime 'or'')..'error: '..s
-	xc.safe_print(s)
+	print(s)
 	http.request(xCodea_server..'/error',xc.null,xc.null,{method=POST,data=s})
-	-- TODO
 end
 
 function xc.fatal_error(s)
@@ -161,21 +159,25 @@ function xc.fatal_error(s)
 	xc.try_connect = function()end
 end
 
-function xc.log(s)
-	xc.safe_print(s)
-	http.request(xCodea_server..'/log',xc.null,xc.null,{method=POST,data=s})
-	-- TODO
+function xc.log(...)
+	print(...)
+	local sarg = {}
+	for i = 1, select('#', ...) do
+		local v = select(i, ...)
+		table.insert(sarg, tostring(v))
+	end
+	if #sarg>0 then http.request(xCodea_server..'/log',xc.null,xc.null,{method=POST,data=table.concat(sarg,' ')}) end
 end
 
 function xc.xlog(s)
 	xc.status = xc.status..s..'\n'
 	s='[client] '..s
-	xc.safe_print(s)
+	print(s)
 	http.request(xCodea_server..'/msg',xc.null,xc.null,{method=POST,data=s})
 end
 
 function xc.vlog(s)
-	xc.safe_print(s)
+	print(s)
 end
 
 function xc.try_connect()
@@ -196,7 +198,7 @@ end
 
 function xc.connection_error(err)
 	xc.error = 'Connection error! '..(err or '')
-	xc.safe_print(xc.error)
+	print(xc.error)
 	-- do nothing, must restart manually
 end
 
@@ -235,10 +237,8 @@ function xc.connected(data,status,headers)
 	xc.server_overwrites = headers['overwrite'] --TODO
 	--- injections
 	if xc.remote_logging then
-		xc.old_print = xc.old_print or print
-		print = function(...) xc.log(table.concat(arg or {},' ')) end
+		xCodea._SANDBOX.print = function(...) xc.log(...) end
 	end
-	xc.safe_print = xc.remote_logging and xc.old_print or print
 
 	xc.projects = i:getDependencies()
 	local localdeps = table.concat(xc.projects,':')
