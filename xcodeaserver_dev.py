@@ -81,6 +81,21 @@ def do_GET(httpd):
 		do_poll(httpd)
 	elif httpd.path=='/connect':
 		do_connect(httpd)
+	elif httpd.path=='/':
+		filepath = path.join(projectsRoot,'xCodea',srcdir,'Main.lua')
+		if path.isfile(filepath):
+			httpd.send_response(200)
+			httpd.send_header('content-type','text/text')
+			file = open(filepath)
+			data = file.read()
+			file.close()
+			data = '--# Main\n' + data
+			httpd.send_header('content-length',len(data))
+			httpd.end_headers()
+			httpd.wfile.write(data)
+		else:
+			httpd.send_response(404)
+			httpd.end_headers()
 	else:
 		error('Invalid request!')
 		connected=None

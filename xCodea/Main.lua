@@ -1,34 +1,15 @@
----------------------------------------------------------
+----------------------------------------------------------
 --                     xCodea
---  a live execution environment for large Codea projects
----------------------------------------------------------
+-- a live execution environment for large Codea projects
 
-------------------
--- edit this
+-- edit this (if you change the port, also change it in xcodeaserver.py)
 local xCodea_server = 'http://192.168.1.100:49374'
------------------
+----------------------------------------------------------
 
 
-
-xCodea = {_SANDBOX = setmetatable({},
-	{__index=_G
-	--[[	function(t,k)
-	--		print('sbox request '..k)
-	for _,i in pairs({'draw','touched','collide'}) do
-	if i==k then print('SANDBOX request '..k) return xCodea.HIDDENBOX[k] end
-	end
-	return _G[k]
-	end
-	,
-	__newindex=function(t,k,v)
-	print('newindex sandbox ',k,v)
-	xCodea.HIDDENBOX[k]=v
-	rawset(xCodea._SANDBOX,k,v) end
-	--]]
-	})}
---for k,v in pairs(xCodea._SANDBOX) do print(k,v)end
-local xc=xc or {} -- #xc
-xc.polling_interval = 1 -- in seconds
+xCodea = {_SANDBOX = setmetatable({}, {__index=_G})}
+local xc=xc or {}
+xc.polling_interval = 1
 xc.remote_logging = true
 xc.remote_watches = false
 xc.server_overwrites = false
@@ -39,7 +20,6 @@ xc.tween = xc.tween or tween.delay(0.01,function()end)
 xc.status = xc.status or ''
 xc.to_sandbox = xc.to_sandbox or {}
 xc.safe_print = print
---xc.sandbox_started = xc.sandbox_started or false
 
 ---@function make_sandbox [parent=#xc]
 --@param #string i the last tab that got sandboxed (or nil)
@@ -47,9 +27,6 @@ xc.safe_print = print
 function xc.make_sandbox(i)
 	local tab = next(xc.to_sandbox,i) -- #string
 	if not tab then
-		-- DONE!
-		-- now i have the 3 entry points inside my sandbox
-		-- time to hijack them!
 		if xc.sandbox_started then return true end
 		return xc.start_sandbox()
 	end
@@ -64,10 +41,8 @@ end
 
 function xc.start_sandbox()
 	xc.xlog('Running setup()')
-	local success, error = xpcall(xCodea._SANDBOX.setup,xc.error_handler)
-	if not success then
-		return xc.sandbox_error(error)
-	else
+	local success = xpcall(xCodea._SANDBOX.setup,xc.error_handler)
+	if success then
 		xc.sandbox_started = true
 		xc.xlog('Starting sandbox!')
 		return xc.run_sandbox()
@@ -75,45 +50,34 @@ function xc.start_sandbox()
 end
 
 function xc.run_sandbox()
-	--[[	if xCodea._SANDBOX.touched then
-	touched = function(touch)
-	local success, error = xpcall(function() xCodea._SANDBOX.touched(touch) end,xc.error_handler)
-	if not success then
-	return xc.sandbox_error(error)
-	end
-	end
-	end
-	--]]
-	--	print(_G.touched,xCodea._SANDBOX.touched,rawget(xCodea._SANDBOX,touched))
 	draw = function()
-		if xCodea._SANDBOX.draw then
+		if xCodea._SANDBOX.draw ~= _G.draw then
 			xpcall(xCodea._SANDBOX.draw,xc.error_handler)
 		end
 	end
 	touched = function(touch)
-		if xCodea._SANDBOX.touched then
+		if xCodea._SANDBOX.touched ~= _G.touched then
 			xpcall(function() xCodea._SANDBOX.touched(touch) end, xc.error_handler)
 		end
 	end
 	--	print(_G.touched,xCodea._SANDBOX.touched,rawget(xCodea._SANDBOX,touched))
 	keyboard = function(key)
-		if xCodea._SANDBOX.keyboard then
+		if xCodea._SANDBOX.keyboard ~= _G.keyboard then
 			xpcall(function() xCodea._SANDBOX.keyboard(key) end, xc.error_handler)
 		end
 	end
 	collide = function(contact)
-		if xCodea._SANDBOX.collide then
+		if xCodea._SANDBOX.collide ~= _G.collide then
 			xpcall(function() xCodea._SANDBOX.collide(contact) end, xc.error_handler)
 		end
 	end
 	orientationChanged = function(newOrientation)
-		if xCodea._SANDBOX.orientationChanged then
+		if xCodea._SANDBOX.orientationChanged ~= _G.orientationChanged then
 			xpcall(function() xCodea._SANDBOX.orientationChanged(newOrientation) end, xc.error_handler)
 		end
 	end
 
 	xc.vlog('Sandbox (re)started')
-	--	xc.eval('','')
 	return true
 end
 
@@ -128,28 +92,26 @@ function xc.eval(code,name,env)
 	end
 	setfenv(success,env)
 	success,_ = xpcall(success, xc.error_handler)
-	--setfenv(1,_G) --FIXME test??
+	--setfenv(1,_G) -- FIXME test??
 	if success then
 		xc.error = nil
 		return xc.sandbox_started and xc.run_sandbox() or true
-			--		draw = xCodea._SANDBOX.draw
-			--draw = function() background(40) xc.draw_status()end
-			--		return true
 	end
 end
+
 function xc.sandbox_error(err)
 	tween.stop(xc.tween)
 	xc.log_error(err,true)
 	draw = function()
-		--if xCodea._SANDBOX.draw then
-		--	pcall(xCodea._SANDBOX.draw)
-		--else
-		--end
-		background(40)
+		if xCodea._SANDBOX.draw ~= _G.draw then
+			pcall(xCodea._SANDBOX.draw)
+		else
+			background(40)
+		end
 		xc.draw_status()
 	end
-	--TODO this must be reset once we get a new eval from the http server
 end
+
 function xc.error_handler(err)
 	--err=err..debug.traceback()
 	err=err..debug.traceback('',2):gsub('%[C%]:.*','')
@@ -163,7 +125,7 @@ function xc.draw_status()
 	textAlign(LEFT)
 	fontSize(18)
 	fill(255,50,50,255)
-	textWrapWidth(WIDTH*3/2)
+	textWrapWidth(WIDTH-80)
 	local _,h=textSize(xc.error or '')
 	text(xc.error or '',40,40)
 	fill(160)
