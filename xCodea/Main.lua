@@ -7,32 +7,10 @@ local xCodea_server = 'http://192.168.1.100:49374'
 ----------------------------------------------------------
 
 
-xCodea = {_SANDBOX = setmetatable({
-	draw = function() end,
-	touched = function(_) end,
-	keyboard = function(_) end,
-	orientationChanged = function(_) end,
-	collide = function(_) end,
-	loadstring = function(code,name)
-		local success, error = _G.loadstring(code,name)
-		if success then
-			setfenv(success, xCodea._SANDBOX)
-		end
-		return success,error
-	end,
--- FIXME dofile(file) breaks the sandbox. if necessary (is it ever used?) find a way to wrap it
-}, {__index=_G})}
-local xc=xc or {} -- #xc
-xc.polling_interval = 1
-xc.remote_logging = true
-xc.remote_watches = false
-xc.server_overwrites = false
+xCodea = {}
+local xc = {} -- #xc
 
-xc.project = xc.project or ''
-xc.projects = xc.projects or {}
-xc.tween = xc.tween or tween.delay(0.01,function()end)
-xc.status = xc.status or ''
-xc.to_sandbox = xc.to_sandbox or {}
+
 
 ---@function make_sandbox [parent=#xc]
 --@param #string i the last tab that got sandboxed (or nil)
@@ -44,7 +22,7 @@ function xc.make_sandbox()
 		return xc.start_sandbox()
 	end
 	table.remove(xc.to_sandbox,1)
-	xc.xlog('Running eval for tab '..tab)
+	xc.vlog('Running eval for tab '..tab)
 	-- FIXME xCodea:Main below is never received (stack overflow!)
 	if xc.eval(readProjectTab(tab),'::'..tab,tab=='xCodea:Main' and _G or nil) then
 		return xc.make_sandbox(tab)
@@ -63,24 +41,35 @@ function xc.start_sandbox()
 end
 
 function xc.run_sandbox()
-	-- these used to be wrapped in: if xCodea._SANDBOX.draw ~= _G.draw then
+	-- <OLD> these used to be wrapped in: if xCodea._SANDBOX.draw ~= _G.draw then
 	-- having them declared in the sandbox a priori makes it unnecessary
-	-- but i'm keeping the reference, you never know
+	-- but i'm keeping the reference, you never know</OLD>
+	-- brought them back and removed declarations from sandbox as it could break some
+	-- 'creative' ways to hijack them from dependencies
 	draw = function()
-		xpcall(xCodea._SANDBOX.draw,xc.error_handler)
+		if xCodea._SANDBOX.draw ~= _G.draw then
+			xpcall(xCodea._SANDBOX.draw,xc.error_handler) end
 	end
 	touched = function(touch)
+		--if xCodea._SANDBOX.touched ~= _G.touched then
 		xpcall(function() xCodea._SANDBOX.touched(touch) end, xc.error_handler)
+		--end
 	end
 	--	print(_G.touched,xCodea._SANDBOX.touched,rawget(xCodea._SANDBOX,touched))
 	keyboard = function(key)
-		xpcall(function() xCodea._SANDBOX.keyboard(key) end, xc.error_handler)
+		if xCodea._SANDBOX.keyboard ~= _G.keyboard then
+			xpcall(function() xCodea._SANDBOX.keyboard(key) end, xc.error_handler)
+		end
 	end
 	orientationChanged = function(newOrientation)
-		xpcall(function() xCodea._SANDBOX.orientationChanged(newOrientation) end, xc.error_handler)
+		if xCodea._SANDBOX.orientationChanged ~= _G.orientationChanged then
+			xpcall(function() xCodea._SANDBOX.orientationChanged(newOrientation) end, xc.error_handler)
+		end
 	end
 	collide = function(contact)
-		xpcall(function() xCodea._SANDBOX.collide(contact) end, xc.error_handler)
+		if xCodea._SANDBOX.collide ~= _G.collide then
+			xpcall(function() xCodea._SANDBOX.collide(contact) end, xc.error_handler)
+		end
 	end
 	xc.vlog('Sandbox (re)started')
 	return true
@@ -105,7 +94,7 @@ function xc.eval(code,name,env)
 end
 
 function xc.sandbox_error(err)
-	tween.stop(xc.tween)
+	--tween.stop(xc.tween)
 	xc.log_error(err,true)
 	draw = function()
 		if xCodea._SANDBOX.draw ~= _G.draw then
@@ -125,6 +114,7 @@ end
 
 
 function xc.draw_status()
+	if xc.error then fill(255,0,0,60) rect(0,0,WIDTH,HEIGHT) end
 	pushStyle()
 	textMode(CORNER)
 	textAlign(LEFT)
@@ -141,7 +131,6 @@ function xc.draw_status()
 	fill(100,240,255)
 	fontSize(80)
 	text('xCodea',WIDTH/2,HEIGHT-40)
-	if xc.error then fill(255,0,0,60) rect(0,0,WIDTH,HEIGHT) end
 	popStyle()
 end
 
@@ -166,7 +155,19 @@ function xc.log(...)
 		local v = select(i, ...)
 		table.insert(sarg, tostring(v))
 	end
-	if #sarg>0 then http.request(xCodea_server..'/log',xc.null,xc.null,{method=POST,data=table.concat(sarg,' ')}) end
+	if #sarg>0 then xc.log_buffer = xc.log_buffer..table.concat(sarg,' ')..'\n' end
+	tween.stop(xc.ltween)
+	if #xc.log_buffer>500 then
+		xc.send_log()
+	elseif #xc.log_buffer>0 then
+		xc.ltween=tween.delay(0.2,xc.send_log)
+	end
+end
+
+---@field [parent=#xc] #string log_buffer desc
+function xc.send_log()
+	http.request(xCodea_server..'/log',xc.null,xc.null,{method=POST,data=xc.log_buffer:sub(1,-2)})
+	xc.log_buffer=''
 end
 
 function xc.xlog(s)
@@ -177,7 +178,7 @@ function xc.xlog(s)
 end
 
 function xc.vlog(s)
-	print(s)
+	print('[client] '..s)
 end
 
 function xc.try_connect()
@@ -405,19 +406,7 @@ function xc.adler32(data)
 		--	return b*65536 + a -- loss of precision (cough codea)
 end
 
-if not xc.sandbox_started then
-	setup=function()
-		xc.try_connect()
-	end
-end
 
-xCodea.restart = function()
-	output.clear()
-	tween.stop(xc.tween)
-	xc.sandbox_started=nil
-	xCodea._SANDBOX = setmetatable({}, {__index = _G})
-	xc.try_connect()
-end
 
 -- INFOPLIST ----------------------------------
 xc.InfoPlist=class()
@@ -476,3 +465,56 @@ function xc.InfoPlist:setDependencies(dependencies)
 end
 
 
+
+--if not xc.sandbox_started then
+--	setup=function()
+--		xc.try_connect()
+--	end
+--end
+
+xCodea.restart = function()
+	xCodea._SANDBOX = setmetatable({
+		draw = function() end,
+		touched = function(_) end,
+		keyboard = function(_) end,
+		orientationChanged = function(_) end,
+		collide = function(_) end,
+		loadstring = function(code,name)
+			local success, error = _G.loadstring(code,name)
+			if success then
+				setfenv(success, xCodea._SANDBOX)
+			end
+			return success,error
+		end,
+	-- TODO as of 1.5.5 almost everything is allowed in Codea's sandbox
+	-- only things removed are arg, os.execute and os.exit
+	-- so: load,loadstring,dofile, require, packages etc are all there!
+	-- FIXME dofile(file) breaks the sandbox. if necessary (is it ever used?) find a way to wrap it
+	-- FIXME look into require()
+	--	}, {__index=_G})
+	}, {__index=function(tbl,key)
+		if key~='draw' and key~='touched' and key~='keyboard'
+			and key~='orientationChanged' and key~='collide' then
+			return _G[key]
+		else return nil end
+	end})
+	xc.polling_interval = 1
+	xc.remote_logging = true
+	xc.remote_watches = false
+	xc.server_overwrites = false
+
+	xc.project = ''
+	xc.projects = {}
+	xc.tween = xc.tween or tween.delay(0,function()end)
+	xc.ltween = xc.ltween or tween.delay(0,function()end)
+	xc.log_buffer = ''
+	xc.status = ''
+	xc.to_sandbox = {}
+	xc.sandbox_started=nil
+
+	output.clear()
+	tween.stop(xc.tween)
+	xc.try_connect()
+end
+
+xCodea.restart()
