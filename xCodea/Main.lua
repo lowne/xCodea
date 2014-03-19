@@ -47,27 +47,27 @@ function xc.run_sandbox()
 	-- brought them back and removed declarations from sandbox as it could break some
 	-- 'creative' ways to hijack them from dependencies
 	draw = function()
-		if xCodea._SANDBOX.draw ~= _G.draw then
+		if xCodea._SANDBOX.draw and xCodea._SANDBOX.draw ~= _G.draw then
 			xpcall(xCodea._SANDBOX.draw,xc.error_handler) end
 	end
 	touched = function(touch)
-		--if xCodea._SANDBOX.touched ~= _G.touched then
-		xpcall(function() xCodea._SANDBOX.touched(touch) end, xc.error_handler)
-		--end
+		if xCodea._SANDBOX.touched and xCodea._SANDBOX.touched ~= _G.touched then
+			xpcall(function() xCodea._SANDBOX.touched(touch) end, xc.error_handler)
+		end
 	end
 	--	print(_G.touched,xCodea._SANDBOX.touched,rawget(xCodea._SANDBOX,touched))
 	keyboard = function(key)
-		if xCodea._SANDBOX.keyboard ~= _G.keyboard then
+		if xCodea._SANDBOX.keyboard and xCodea._SANDBOX.keyboard ~= _G.keyboard then
 			xpcall(function() xCodea._SANDBOX.keyboard(key) end, xc.error_handler)
 		end
 	end
 	orientationChanged = function(newOrientation)
-		if xCodea._SANDBOX.orientationChanged ~= _G.orientationChanged then
+		if xCodea._SANDBOX.orientationChanged and xCodea._SANDBOX.orientationChanged ~= _G.orientationChanged then
 			xpcall(function() xCodea._SANDBOX.orientationChanged(newOrientation) end, xc.error_handler)
 		end
 	end
 	collide = function(contact)
-		if xCodea._SANDBOX.collide ~= _G.collide then
+		if xCodea._SANDBOX.collide and xCodea._SANDBOX.collide ~= _G.collide then
 			xpcall(function() xCodea._SANDBOX.collide(contact) end, xc.error_handler)
 		end
 	end
@@ -98,10 +98,12 @@ function xc.sandbox_error(err)
 	xc.log_error(err,true)
 	draw = function()
 		if xCodea._SANDBOX.draw ~= _G.draw then
-			pcall(xCodea._SANDBOX.draw)
+			local success = pcall(xCodea._SANDBOX.draw)
+			if not success then background(40) end
 		else
 			background(40)
 		end
+		resetStyle() resetMatrix()
 		xc.draw_status()
 	end
 end
@@ -474,11 +476,11 @@ end
 
 xCodea.restart = function()
 	xCodea._SANDBOX = setmetatable({
-		draw = function() end,
-		touched = function(_) end,
-		keyboard = function(_) end,
-		orientationChanged = function(_) end,
-		collide = function(_) end,
+		--		draw = function() end,
+		--		touched = function(_) end,
+		--		keyboard = function(_) end,
+		--		orientationChanged = function(_) end,
+		--		collide = function(_) end,
 		loadstring = function(code,name)
 			local success, error = _G.loadstring(code,name)
 			if success then

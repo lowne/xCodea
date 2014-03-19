@@ -23,18 +23,24 @@ def adler32(str):
 
 def error(data):
 	sys.stderr.write('[server] ERROR '+data)
-	if notify:
+	if sound:
+		os.system('afplay /System/Library/Sounds/Sosumi.aiff')
+	elif notify:
 		os.system('terminal-notifier -title "xCodea server" -sound Sosumi -group xCodea.error -message "\\%s" > /dev/null'% (data.replace('"','\\"')))
 
 def rerror(data):
-	for match in re.finditer('\[string "::(.+?)"\]',data):
+	for match in re.finditer('\[string "::(.+?)"\]:(.+?):',data):
 		snippet = match.group(1)
 		proj,file = snippet.split(':')
 		filename = path.normpath(path.join(projectsRoot,proj,srcdir,file+'.lua'))
-		data = data.replace(match.group(0),filename)
+		#filename = path.normpath(path.join(file+'.lua'))
+		data = data.replace(match.group(0),'('+filename+':'+match.group(2)+')')
+		#data = '('+filename+':'+match.group(2)+')'+data.replace(match.group(0),'')
 
 	sys.stderr.write(data+'\n')
-	if notify:
+	if sound:
+		os.system('afplay /System/Library/Sounds/Sosumi.aiff')
+	elif notify:
 		os.system('terminal-notifier -title "xCodea ERROR" -sound Sosumi -group xCodea.error -message "\\%s" > /dev/null'% (data.replace('"','\\"')))
 
 def vlog(data):
@@ -43,8 +49,10 @@ def vlog(data):
 
 def log(data):
 	print('[server] '+data)
-	if notify:
-		os.system('terminal-notifier -title "xCodea server" -group xCodea.server -message "\\%s" > /dev/null'% (data))
+	if sound:
+		os.system('afplay /System/Library/Sounds/Pop.aiff')
+	elif notify:
+		os.system('terminal-notifier -title "xCodea server" -sound Pop -group xCodea.server -message "\\%s" > /dev/null'% (data))
 
 def clog(data):
 	print(data)

@@ -5,18 +5,20 @@
 
 Usage: 
   xcodeaserver.py <projDir> [--root=<projectsRoot>] [--src=<srcSubDir>]
-                            [--notify] [--overwrite] [--polling=<interval>]  
-                            [--logging] [--watches] [--verbose]
+                            [--notify|--sound] [--logging] [--overwrite] 
+                            [--polling=<interval>] [--watches] [--verbose]
   xcodeaserver.py --help
 
 
 Options:
-  -r --root=<projectsRoot>  Directory containing your projects [default: .]
+  --root=<projectsRoot>     Directory containing your projects [default: .]
 
-  -s --src=<srcSubDir>      Location of .lua files in the project directory
+  --src=<srcSubDir>         Location of .lua files in the project directory
                             (e.g. use --src=src for Eclipse/LDT) [default: .]
 
   -n --notify               Use terminal-notifier for feedback
+
+  -s --sound                Use afplay for feedback (sounds)
 
   -o --overwrite            CAUTION - Overwrite the project in Codea with all
                             local changes since last connected (default is the
@@ -93,6 +95,7 @@ if __name__ == '__main__':
 	proj=args['<projDir>']
 	#x.notify = 'terminal-notifier' if args['--notify'] else None
 	x.notify = args['--notify']
+	x.sound = args['--sound']
 	x.pollingInterval = args['--polling']	
 	x.logging = args['--logging']
 	x.watches = args['--watches']
