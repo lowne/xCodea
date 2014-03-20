@@ -5,38 +5,35 @@
 
 Usage: 
   xcodeaserver.py <projDir> [--root=<projectsRoot>] [--src=<srcSubDir>]
-                            [--notify|--sound] [--logging] [--overwrite] 
-                            [--polling=<interval>] [--watches] [--verbose]
+                            [--color] [--notify|--sound] [--logging]
+                            [--polling=<interval>] [--verbose]
   xcodeaserver.py --help
 
 
 Options:
   --root=<projectsRoot>     Directory containing your projects [default: .]
-
   --src=<srcSubDir>         Location of .lua files in the project directory
                             (e.g. use --src=src for Eclipse/LDT) [default: .]
-
-  -n --notify               Use terminal-notifier for feedback
-
   -s --sound                Use afplay for feedback (sounds)
+  -n --notify               Use terminal-notifier for feedback
+  -c --color                Colorize output
+  -l --logging              Log print() statements from Codea
+  -p --polling=<interval>   Polling interval in seconds [default: 1]
+  -v --verbose              Debug logging
+  -h --help                 Show this screen
+'''
 
+#not implemented yet
+'''
   -o --overwrite            CAUTION - Overwrite the project in Codea with all
                             local changes since last connected (default is the
                             other way around - sync back any changes that were
                             made on your device); this is only useful if you
                             have more than one device
 
-  -p --polling=<interval>   Polling interval in seconds [default: 1]
-
-  -l --logging              Display locally print commands from Codea
-
   -w --watches              Capture all parameter.watch from Codea to ./.watches
 
-  -v --verbose              Debug logging
-
-  -h --help                 Show this screen
 '''
-
 
 
 import xcodeaserver_dev as x
@@ -96,11 +93,12 @@ if __name__ == '__main__':
 	#x.notify = 'terminal-notifier' if args['--notify'] else None
 	x.notify = args['--notify']
 	x.sound = args['--sound']
+	x.color = args['--color']
 	x.pollingInterval = args['--polling']	
 	x.logging = args['--logging']
-	x.watches = args['--watches']
+	#x.watches = args['--watches']
 	x.verbose = args['--verbose']
-	x.overwrite = args['--overwrite']
+	#x.overwrite = args['--overwrite']
 	x.projectsRoot = args['--root']
 	x.srcdir = args['--src']
 	proj = normpath(proj)
@@ -112,5 +110,5 @@ if __name__ == '__main__':
 		sys.exit(1)
 	x.project = proj
 	httpd = BaseHTTPServer.HTTPServer(('', 49374), XCodeaServer)
-	print('xCodea server started on port 49374')
+	print(x.colorwrap(x.BLUE,'xCodea server started on port 49374'))
 	httpd.serve_forever()

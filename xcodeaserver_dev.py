@@ -9,6 +9,10 @@ from lxml import etree
 #----------------------------------------
 
 
+RED='31'
+GREEN='32'
+BLUE='34'
+
 
 def adler32(str):
 	# TODO test with real unicode - probably broken
@@ -21,8 +25,12 @@ def adler32(str):
 		b = (b + a) % 65521
 	return '%04x%04x'%(b,a)
 
+def colorwrap(c,data):
+	if not color:return data
+	return '\x1b['+c+'m'+data+'\x1b[m'
+
 def error(data):
-	sys.stderr.write('[server] ERROR '+data)
+	sys.stderr.write(colorwrap(RED,'[server] ERROR '+data))
 	if sound:
 		os.system('afplay /System/Library/Sounds/Sosumi.aiff')
 	elif notify:
@@ -37,7 +45,7 @@ def rerror(data):
 		data = data.replace(match.group(0),'('+filename+':'+match.group(2)+')')
 		#data = '('+filename+':'+match.group(2)+')'+data.replace(match.group(0),'')
 
-	sys.stderr.write(data+'\n')
+	sys.stderr.write(colorwrap(RED,data)+'\n')
 	if sound:
 		os.system('afplay /System/Library/Sounds/Sosumi.aiff')
 	elif notify:
@@ -45,17 +53,17 @@ def rerror(data):
 
 def vlog(data):
 	if verbose:
-		print('[server] '+data)
+		print(colorwrap(BLUE,'[server] '+data))
 
 def log(data):
-	print('[server] '+data)
+	print(colorwrap(BLUE,'[server] '+data))
 	if sound:
 		os.system('afplay /System/Library/Sounds/Pop.aiff')
 	elif notify:
 		os.system('terminal-notifier -title "xCodea server" -sound Pop -group xCodea.server -message "\\%s" > /dev/null'% (data))
 
 def clog(data):
-	print(data)
+	print(colorwrap(GREEN,data))
 	if notify:
 		os.system('terminal-notifier -title "xCodea client" -group xCodea.client -message "\\%s" > /dev/null'% (data))
 
@@ -159,8 +167,9 @@ def do_connect(httpd):
 	httpd.send_response(200)
 	httpd.send_header('polling',pollingInterval)
 	if logging:	httpd.send_header('logging','true')
-	if watches: httpd.send_header('watches','true')
-	if overwrite: httpd.send_header('overwrite','true')
+	if verbose: httpd.send_header('verbose','true')
+	#if watches: httpd.send_header('watches','true')
+	#if overwrite: httpd.send_header('overwrite','true')
 	httpd.send_header('project',project)
 	httpd.send_header('dependencies',':'.join(deps))
 	data=''

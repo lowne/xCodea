@@ -81,8 +81,8 @@ function xc.eval(code,name,env)
 	env = env or xCodea._SANDBOX
 	local success, error = loadstring(code,name)
 	if not success then
-		xc.xlog('error in loadstring')
-		return xc.sandbox_error(error)
+		xc.vlog('error in loadstring()')
+		return xc.sandbox_error(error,false)
 	end
 	setfenv(success,env)
 	success,_ = xpcall(success, xc.error_handler)
@@ -93,9 +93,9 @@ function xc.eval(code,name,env)
 	end
 end
 
-function xc.sandbox_error(err)
+function xc.sandbox_error(err,is_runtime)
 	--tween.stop(xc.tween)
-	xc.log_error(err,true)
+	xc.log_error(err,is_runtime)
 	draw = function()
 		if xCodea._SANDBOX.draw ~= _G.draw then
 			local success = pcall(xCodea._SANDBOX.draw)
@@ -111,26 +111,38 @@ end
 function xc.error_handler(err)
 	--err=err..debug.traceback()
 	err=err..debug.traceback('',2):gsub('%[C%]:.*','')
-	xc.sandbox_error(err)
+	xc.sandbox_error(err,true)
 end
 
 
 function xc.draw_status()
-	if xc.error then fill(255,0,0,60) rect(0,0,WIDTH,HEIGHT) end
 	pushStyle()
+	noStroke()
+	if xc.error then fill(255,0,0,60) rect(0,0,WIDTH,HEIGHT) end
 	textMode(CORNER)
+	rectMode(CORNERS)
 	textAlign(LEFT)
 	fontSize(18)
-	fill(255,50,50,255)
 	textWrapWidth(WIDTH-80)
-	local _,h=textSize(xc.error or '')
-	text(xc.error or '',40,40)
+	local h = 0
+	if xc.error then 
+		_,h=textSize(xc.error)
+		h = h + 40
+		fill(0,200)
+		rect(20,20,WIDTH-20,20+h)
+		fill(255,50,50,255)
+		text(xc.error,40,40)
+	end
 	fill(160)
 	if not xc.status_blink or math.floor(ElapsedTime*2) % 4 ~= 0 then
-		text(xc.status,40,40+h)
+		for k,v in ipairs(xc.status) do
+			local r = #xc.status-k
+			fill(200,470-r*15)
+			text(v,40,r*20+40+h)
+		end
 	end
 	textMode(CENTER)
-	fill(100,240,255)
+	fill(200,240,255)
 	fontSize(80)
 	text('xCodea',WIDTH/2,HEIGHT-40)
 	popStyle()
@@ -140,7 +152,7 @@ function xc.null() end
 
 function xc.log_error(s,is_sandbox)
 	xc.error = s
-	s='[client] '..(is_sandbox and 'runtime 'or'')..'error: '..s
+	s='[client] '..(is_sandbox and 'runtime 'or 'syntax ')..'error: '..s -- BASIC yeah! :)
 	print(s)
 	http.request(xCodea_server..'/error',xc.null,xc.null,{method=POST,data=s})
 end
@@ -173,13 +185,15 @@ function xc.send_log()
 end
 
 function xc.xlog(s)
-	xc.status = xc.status..s..'\n'
+	table.insert(xc.status,s)
+	if #xc.status>30 then table.remove(xc.status,1) end
 	s='[client] '..s
 	print(s)
 	http.request(xCodea_server..'/msg',xc.null,xc.null,{method=POST,data=s})
 end
 
 function xc.vlog(s)
+	if xc.verbose then return xc.xlog(s) end
 	print('[client] '..s)
 end
 
@@ -189,7 +203,7 @@ function xc.try_connect()
 		xc.draw_status()
 	end
 
-	xc.status=xc.status..'Connecting to '..xCodea_server..'\n'
+	table.insert(xc.status,'Connecting to '..xCodea_server)
 	xc.status_blink=true
 
 	local function not_connected()
@@ -236,8 +250,10 @@ function xc.connected(data,status,headers)
 	xc.error=nil
 	xc.polling_interval = tonumber(headers['polling']) or 1
 	xc.remote_logging = headers['logging']
+	xc.verbose = headers['verbose']
 	xc.remote_watches = headers['watches'] --TODO
 	xc.server_overwrites = headers['overwrite'] --TODO
+
 	--- injections
 	if xc.remote_logging then
 		xCodea._SANDBOX.print = function(...) xc.log(...) end
@@ -408,7 +424,16 @@ function xc.adler32(data)
 		--	return b*65536 + a -- loss of precision (cough codea)
 end
 
-
+function xc.splitstring(str,sep)
+    if (sep=='') then return false end
+    local pos,arr = 0,{}
+    for st,sp in function() return string.find(str,sep,pos,true) end do
+        table.insert(arr,string.sub(str,pos,st-1))
+        pos = sp + 1
+    end
+    table.insert(arr,string.sub(str,pos))
+    return arr
+end
 
 -- INFOPLIST ----------------------------------
 xc.InfoPlist=class()
@@ -503,6 +528,7 @@ xCodea.restart = function()
 	xc.polling_interval = 1
 	xc.remote_logging = true
 	xc.remote_watches = false
+	xc.verbose = false
 	xc.server_overwrites = false
 
 	xc.project = ''
@@ -510,12 +536,13 @@ xCodea.restart = function()
 	xc.tween = xc.tween or tween.delay(0,function()end)
 	xc.ltween = xc.ltween or tween.delay(0,function()end)
 	xc.log_buffer = ''
-	xc.status = ''
+	xc.status = {}
 	xc.to_sandbox = {}
 	xc.sandbox_started=nil
 
 	output.clear()
 	tween.stop(xc.tween)
+	tween.stop(xc.ltween)
 	xc.try_connect()
 end
 
