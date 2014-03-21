@@ -47,8 +47,13 @@ function xc.run_sandbox()
 	-- brought them back and removed declarations from sandbox as it could break some
 	-- 'creative' ways to hijack them from dependencies
 	draw = function()
+		-- TODO
+		--		if xCodea._SANDBOX.update then
+		--			xpcall(xCodea._SANDBOX.update,xc.error_handler)
+		--		end
 		if xCodea._SANDBOX.draw and xCodea._SANDBOX.draw ~= _G.draw then
-			xpcall(xCodea._SANDBOX.draw,xc.error_handler) end
+			xpcall(xCodea._SANDBOX.draw,xc.error_handler)
+		end
 	end
 	touched = function(touch)
 		if xCodea._SANDBOX.touched and xCodea._SANDBOX.touched ~= _G.touched then
@@ -97,6 +102,10 @@ function xc.sandbox_error(err,is_runtime)
 	--tween.stop(xc.tween)
 	xc.log_error(err,is_runtime)
 	draw = function()
+		-- TODO
+		--		if xCodea._SANDBOX.update then
+		--			pcall(xCodea._SANDBOX.update)
+		--		end
 		if xCodea._SANDBOX.draw ~= _G.draw then
 			local success = pcall(xCodea._SANDBOX.draw)
 			if not success then background(40) end
@@ -125,7 +134,7 @@ function xc.draw_status()
 	fontSize(18)
 	textWrapWidth(WIDTH-80)
 	local h = 0
-	if xc.error then 
+	if xc.error then
 		_,h=textSize(xc.error)
 		h = h + 40
 		fill(0,200)
@@ -425,22 +434,28 @@ function xc.adler32(data)
 end
 
 function xc.splitstring(str,sep)
-    if (sep=='') then return false end
-    local pos,arr = 0,{}
-    for st,sp in function() return string.find(str,sep,pos,true) end do
-        table.insert(arr,string.sub(str,pos,st-1))
-        pos = sp + 1
-    end
-    table.insert(arr,string.sub(str,pos))
-    return arr
+	if (sep=='') then return false end
+	local pos,arr = 0,{}
+	for st,sp in function() return string.find(str,sep,pos,true) end do
+		table.insert(arr,string.sub(str,pos,st-1))
+		pos = sp + 1
+	end
+	table.insert(arr,string.sub(str,pos))
+	return arr
 end
 
 -- INFOPLIST ----------------------------------
 xc.InfoPlist=class()
 
+-- necessary as changes to .plist aren't "flushed" until Codea is properly "reset"
+-- (i.e. the current project is stopped and another one is started)
+xc.InfoPlist.cache = {}
+
 function xc.InfoPlist:init(projectName)
+	self.proj = projectName
 	self.path = os.getenv('HOME') .. '/Documents/'..projectName..'.codea/Info.plist'
 end
+
 function xc.InfoPlist:exists()
 	local file = io.open(self.path,'r')
 	if file then file:close() return true end
@@ -448,6 +463,7 @@ function xc.InfoPlist:exists()
 end
 
 function xc.InfoPlist:_getAll()
+	if xc.InfoPlist.cache[self.proj] then return xc.InfoPlist.cache[self.proj] end
 	local file = io.open(self.path,'r')
 	local plist
 	if file then
@@ -458,6 +474,7 @@ function xc.InfoPlist:_getAll()
 			plist = plist:gsub('<key>Created.-</string>','%0'..emptydeps)
 		end
 		plist = plist:gsub(emptydeps,'<key>Dependencies</key><array></array>')
+		xc.InfoPlist.cache[self.proj] = plist
 	end
 	return plist
 end
@@ -489,6 +506,7 @@ function xc.InfoPlist:setDependencies(dependencies)
 	local write = io.open(self.path, "w")
 	write:write(plist)
 	write:close()
+	xc.InfoPlist.cache[self.proj] = plist
 end
 
 
