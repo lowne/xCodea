@@ -355,6 +355,10 @@ def do_dependencies_saved(httpd):
 	log('Dependencies updated successfully: '+', '.join(deps))
 	httpd.send_response(200)
 	httpd.end_headers()
+	evalpath = path.normpath(path.join(projectsRoot,'eval.luac'))
+	file = open(evalpath,'w')
+	file.write('xCodea.restart()')
+	file.close()
 
 def do_file_saved(httpd):
 	proj = httpd.headers.getheader('project') or ''
