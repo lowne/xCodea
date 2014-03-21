@@ -1,16 +1,11 @@
 ----------------------------------------------------------
 --                     xCodea
 -- a live execution environment for large Codea projects
-
--- edit this (if you change the port, also change it in xcodeaserver.py)
-local xCodea_server = 'http://192.168.1.100:49374'
 ----------------------------------------------------------
 
 
 xCodea = {}
 local xc = {} -- #xc
-
-
 
 ---@function make_sandbox [parent=#xc]
 --@param #string i the last tab that got sandboxed (or nil)
@@ -211,7 +206,9 @@ function xc.try_connect()
 		background(40)
 		xc.draw_status()
 	end
-
+	if xCodea_server =='http://IP_ADDR_OR_HOSTNAME_HERE:49374' then
+		return xc.fatal_error('Please enter the server\'s IP address in tab EDIT_THIS')
+	end
 	table.insert(xc.status,'Connecting to '..xCodea_server)
 	xc.status_blink=true
 

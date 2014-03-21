@@ -98,14 +98,19 @@ def do_GET(httpd):
 	elif httpd.path=='/connect':
 		do_connect(httpd)
 	elif httpd.path=='/':
-		filepath = path.join(projectsRoot,'xCodea',srcdir,'Main.lua')
-		if path.isfile(filepath):
+		editpath = path.join(projectsRoot,'xCodea',srcdir,'EDIT_THIS.lua')
+		mainpath = path.join(projectsRoot,'xCodea',srcdir,'Main.lua')
+		if path.isfile(editpath) and path.isfile(mainpath):
 			httpd.send_response(200)
 			httpd.send_header('content-type','text/text')
-			file = open(filepath)
+			file = open(editpath)
 			data = file.read()
 			file.close()
-			data = '--# Main\n' + data
+			data = '--# EDIT_THIS\n' + data + '\n'
+			file = open(mainpath)
+			main = file.read()
+			file.close()
+			data = data + '--# Main\n' + main
 			httpd.send_header('content-length',len(data))
 			httpd.end_headers()
 			httpd.wfile.write(data)
