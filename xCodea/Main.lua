@@ -19,7 +19,7 @@ function xc.make_sandbox()
 	table.remove(xc.to_sandbox,1)
 	xc.vlog('Running eval for tab '..tab)
 	-- FIXME xCodea:Main below is never received (stack overflow!)
-	if xc.eval(readProjectTab(tab),'::'..tab,tab=='xCodea:Main' and _G or nil) then
+	if xc.eval(readProjectTab(tab),'::'..tab) then
 		return xc.make_sandbox(tab)
 	end
 end
@@ -75,19 +75,28 @@ function xc.run_sandbox()
 	return true
 end
 
-function xc.eval(code,name,env)
+function xc.eval(code,name,log)
 	xc.vlog('Eval: '..name)
 	--	if code=='restart()' then loadstring(code)() end
-	env = env or xCodea._SANDBOX
-	local success, error = loadstring(code,name)
+	--env = env or xCodea._SANDBOX
+	local success, error, is_repl
+	if log then
+		success, error = loadstring('return '..code,name)
+		if success then is_repl = true end
+	end
+	if not success then success,error = loadstring(code,name) end
 	if not success then
 		xc.vlog('error in loadstring()')
 		return xc.sandbox_error(error,false)
 	end
-	setfenv(success,env)
-	success,_ = xpcall(success, xc.error_handler)
+	setfenv(success,xCodea._SANDBOX)
+	local results = {xpcall(success, xc.error_handler)}
+	success = results[1]
 	--setfenv(1,_G) -- FIXME test??
 	if success then
+		if is_repl then
+			return xc.log('[eval] '..name..' =>'..(results[2] and '' or ' nil'),unpack(results,2))
+		end
 		xc.error = nil
 		return xc.sandbox_started and xc.run_sandbox() or true
 	end
@@ -191,7 +200,7 @@ end
 function xc.xlog(s)
 	table.insert(xc.status,s)
 	if #xc.status>30 then table.remove(xc.status,1) end
-	s='[client] '..s
+	s = '[client] '..s
 	print(s)
 	http.request(xCodea_server..'/msg',xc.null,xc.null,{method=POST,data=s})
 end
@@ -386,7 +395,7 @@ function xc.poll()
 			xc.xlog('Received eval request: '..name)
 			tween.stop(xc.tween)
 			xc.tween = tween.delay(xc.polling_interval,xc.poll)
-			return xc.eval(data,name)
+			return xc.eval(data,name,true)
 		end
 		local file = headers['file']
 		local delete = headers['delete']
