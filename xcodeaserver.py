@@ -7,6 +7,8 @@ Usage:
   xcodeaserver.py <projDir> [--root=<projectsRoot>] [--src=<srcSubDir>]
                             [--color] [--notify|--sound] [--logging]
                             [--polling=<interval>] [--verbose]
+  xcodeaserver.py --push [-csv] <projDir>
+  xcodeaserver.py --pull [-csv] <projDir>
   xcodeaserver.py --help
 
 
@@ -20,6 +22,10 @@ Options:
   -l --logging              Log print() statements from Codea
   -p --polling=<interval>   Polling interval in seconds [default: 1]
   -v --verbose              Debug logging
+
+  --pull                    Pulls
+  --push                    Pushes
+
   -h --help                 Show this screen
 '''
 
@@ -41,12 +47,13 @@ import xcodeaserver_dev as x
 DEV = False
 DEV = True
 import sys,time,os
-from os.path import isdir,join,normpath
+from os.path import isdir,isfile,join,normpath
 from os import listdir
 import BaseHTTPServer
 from docopt import docopt
 import json
 
+x.shutdown = None
 x.counter=0
 x.projectsRoot = '.'
 x.srcdir = '.'
@@ -101,14 +108,31 @@ if __name__ == '__main__':
 	#x.overwrite = args['--overwrite']
 	x.projectsRoot = args['--root']
 	x.srcdir = args['--src']
+	x.pull = args['--pull']
+	x.push = args['--push']
+
 	proj = normpath(proj)
-	if not isdir(join(x.projectsRoot,proj)):
-		print('Project '+proj+' not found!')
-		sys.exit(1)
+
+	if x.push:
+		if not isdir(join(x.projectsRoot,proj)):
+			print(x.colorwrap(x.RED,'Project '+proj+' not found!'))
+			sys.exit(1)
+		if not isfile(join(x.projectsRoot,proj,'Main.lua')):
+			print(x.colorwrap(x.RED,'Project '+proj+' is not a valid Codea project!'))
+			sys.exit(1)
 	if proj=='xCodea':
 		print('Better not :p')
 		sys.exit(1)
+	if not isdir(join(x.projectsRoot,proj)):
+		print(x.colorwrap(x.RED,'Warning: project '+proj+' not found! Its folder will be created on successful connection'))
+		print(x.colorwrap(x.RED,'If you are using LDT, better create an empty project *first* so that dependencies can be synced correctly'))
 	x.project = proj
 	httpd = BaseHTTPServer.HTTPServer(('', 49374), XCodeaServer)
 	print(x.colorwrap(x.BLUE,'xCodea server started on port 49374'))
-	httpd.serve_forever()
+	if x.pull:
+		print(x.colorwrap(x.RED,'Warning: will pull project '+proj+' from Codea. Any local files in the project or its dependencies will be overwritten or deleted.'))
+	if x.push:
+		print(x.colorwrap(x.RED,'Warning: will push project '+proj+' to Codea. Existing Codea tabs in the project or its dependencies will be overwritten or deleted.'))
+	while not x.shutdown:
+		httpd.handle_request()
+#	httpd.serve_forever()

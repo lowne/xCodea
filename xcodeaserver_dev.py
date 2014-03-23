@@ -97,6 +97,12 @@ def do_GET(httpd):
 		do_poll(httpd)
 	elif httpd.path=='/connect':
 		do_connect(httpd)
+	elif httpd.path=='/done':
+		httpd.send_response(200)
+		httpd.end_headers()
+		log('Operation completed, exiting now.')
+		global shutdown
+		shutdown = True
 	elif httpd.path=='/':
 		editpath = path.join(projectsRoot,'xCodea',srcdir,'EDIT_THIS.lua')
 		mainpath = path.join(projectsRoot,'xCodea',srcdir,'Main.lua')
@@ -173,6 +179,8 @@ def do_connect(httpd):
 	httpd.send_header('polling',pollingInterval)
 	if logging:	httpd.send_header('logging','true')
 	if verbose: httpd.send_header('verbose','true')
+	if pull: httpd.send_header('pull','true')
+	if push: httpd.send_header('push','true')
 	#if watches: httpd.send_header('watches','true')
 	#if overwrite: httpd.send_header('overwrite','true')
 	httpd.send_header('project',project)
@@ -183,7 +191,10 @@ def do_connect(httpd):
 		files = (cache.get(proj) or dict()).get('files') or dict()
 		for file,chk in files.items():
 			data = data + proj+':'+file+':' + chk + ':'
-	httpd.send_header('checksums',data)
+	if push:
+		for proj in deps:
+			if cache.get(proj): cache[proj]['files'] = dict()
+	if not pull: httpd.send_header('checksums',data)
 	httpd.end_headers()
 
 def do_set_dependencies(httpd):
@@ -318,12 +329,13 @@ def	do_poll(httpd):
 					#flush_cache()
 					return
 	for tabpath in known_files:
-		vlog('Sending delete request for removed file: '+tabpath)
-		httpd.send_response(200)
-		httpd.send_header('project',project)
-		httpd.send_header('delete',tabpath)
-		httpd.end_headers()
-		return
+		if tabpath.split(':')[1]!='Main': # cannot delete Main.lua!
+			vlog('Sending delete request for removed file: '+tabpath)
+			httpd.send_response(200)
+			httpd.send_header('project',project)
+			httpd.send_header('delete',tabpath)
+			httpd.end_headers()
+			return
 	evalpath = path.normpath(path.join(projectsRoot,'eval.luac'))
 	if path.isfile(evalpath):
 		file = open(evalpath)

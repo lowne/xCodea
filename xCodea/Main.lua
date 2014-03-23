@@ -262,13 +262,13 @@ function xc.connected(data,status,headers)
 	xc.status_blink=nil
 	xc.xlog('Connected. Syncing files')
 	xc.project = proj
-	xc.error=nil
+	xc.error = nil
 	xc.polling_interval = tonumber(headers['polling']) or 1
 	xc.remote_logging = headers['logging']
 	xc.verbose = headers['verbose']
 	xc.remote_watches = headers['watches'] --TODO
-	xc.server_overwrites = headers['overwrite'] --TODO
-
+	xc.remote_pull = headers['pull']
+	xc.remote_push = headers['push']
 	--- injections
 	if xc.remote_logging then
 		xCodea._SANDBOX.print = function(...) xc.log(...) end
@@ -283,6 +283,30 @@ function xc.connected(data,status,headers)
 	end
 
 	table.insert(xc.projects,xc.project)
+	if xc.remote_pull then xc.xlog('Pull request from server. Remote files will be overwritten.')
+	elseif xc.remote_push then
+		xc.xlog('Push request from server. Local files will be overwritten.')
+		local deps = headers['dependencies']
+		if deps then
+			xc.xlog('Received new dependencies: '..deps)
+			local remotedeps = {}
+			for dep in (deps..':'):gmatch('(..-):') do
+				local i=xc.InfoPlist(dep)
+				if not i:exists() then
+					xc.fatal_error('Dependency "'..dep..'" that was added\n'..
+						'on the server does not exist in Codea!\n'..
+						'xCodea cannot create new projects in Codea, so you must do it manually.\n'..
+						'You can then reconnect to the xCodea server.')
+					return
+				end
+				table.insert(remotedeps,dep)
+			end
+			local i=xc.InfoPlist(xc.project)
+			i:setDependencies(remotedeps)
+		end
+		return xc.poll()
+	end
+
 
 	local sendfiles={}
 	for _,proj in pairs(xc.projects) do
@@ -302,6 +326,10 @@ function xc.connected(data,status,headers)
 	local function send_files(i)
 		local file = next(sendfiles,i)
 		if not file then
+			if xc.remote_pull then
+				http.request(xCodea_server..'/done',xc.null,xc.null)
+				return xc.fatal_error('Operation completed.')
+			end
 			return xc.poll()
 		end -- done sending tabs
 
@@ -352,6 +380,11 @@ function xc.poll()
 	local function success(data,status,headers)
 		if status~=200 and status~=204 then xc.log_error('Received status '..status) return end
 		if status==204 then
+			if xc.remote_push then
+				http.request(xCodea_server..'/done',xc.null,xc.null)
+				return xc.fatal_error('Operation completed.')
+			end
+
 			if not xc.error then
 				xc.make_sandbox()
 			end
@@ -366,7 +399,7 @@ function xc.poll()
 		if deps then
 			xc.xlog('Received new dependencies: '..deps)
 			local remotedeps = {}
-			for dep in (deps..':'):gmatch('(.-):') do
+			for dep in (deps..':'):gmatch('(..-):') do
 				local i=xc.InfoPlist(dep)
 				if not i:exists() then
 					xc.fatal_error('Dependency "'..dep..'" that was added\n'..
@@ -455,6 +488,9 @@ xc.InfoPlist=class()
 
 -- necessary as changes to .plist aren't "flushed" until Codea is properly "reset"
 -- (i.e. the current project is stopped and another one is started)
+
+-- FIXME nope, it seems in some cases (I'm guessing when Codea has the file open somewhere) the writes are just silently discarded...
+-- more testing necessary
 xc.InfoPlist.cache = {}
 
 function xc.InfoPlist:init(projectName)
@@ -553,7 +589,8 @@ xCodea.restart = function()
 	xc.remote_logging = true
 	xc.remote_watches = false
 	xc.verbose = false
-	xc.server_overwrites = false
+	xc.remote_push = false
+	xc.remote_pull = false
 
 	xc.project = ''
 	xc.projects = {}
