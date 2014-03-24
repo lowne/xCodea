@@ -106,6 +106,7 @@ def flush_cache():
 #-------------------------------------
 
 def do_GET(httpd):
+	#print('GET',httpd.path)
 	if httpd.path=='/poll':
 		do_poll(httpd)
 	elif httpd.path=='/connect':
@@ -150,7 +151,7 @@ def do_GET(httpd):
 		httpd.end_headers()
 
 def do_POST(httpd):
-	#vlog('POST '+httpd.path)
+	#print('POST '+httpd.path)
 	try:
 		length = int(httpd.headers.getheader('content-length'))
 	except (TypeError, ValueError):

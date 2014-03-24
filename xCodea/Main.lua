@@ -167,7 +167,7 @@ function xc.log_error(s,is_sandbox)
 	xc.error = s
 	s='[client] '..(is_sandbox and 'runtime 'or 'syntax ')..'error: '..s -- BASIC yeah! :)
 	print(s)
-	http.request(xCodea_server..'/error',xc.null,xc.null,{method=POST,data=s})
+	http.request(xCodea_server..'/error',xc.null,xc.null,{method='POST',data=s})
 end
 
 function xc.fatal_error(s)
@@ -184,16 +184,16 @@ function xc.log(...)
 	end
 	if #sarg>0 then xc.log_buffer = xc.log_buffer..table.concat(sarg,' ')..'\n' end
 	tween.stop(xc.ltween)
-	if #xc.log_buffer>500 then
+	if #xc.log_buffer>100 then
 		xc.send_log()
-	elseif #xc.log_buffer>0 then
+	elseif #xc.log_buffer>2 then
 		xc.ltween=tween.delay(0.2,xc.send_log)
 	end
 end
 
 ---@field [parent=#xc] #string log_buffer desc
 function xc.send_log()
-	http.request(xCodea_server..'/log',xc.null,xc.null,{method=POST,data=xc.log_buffer:sub(1,-2)})
+	http.request(xCodea_server..'/log',xc.null,xc.null,{method='POST',data=xc.log_buffer:sub(1,-2)})
 	xc.log_buffer=''
 end
 
@@ -202,7 +202,7 @@ function xc.xlog(s)
 	if #xc.status>30 then table.remove(xc.status,1) end
 	s = '[client] '..s
 	print(s)
-	http.request(xCodea_server..'/msg',xc.null,xc.null,{method=POST,data=s})
+	http.request(xCodea_server..'/msg',xc.null,xc.null,{method='POST',data=s})
 end
 
 function xc.vlog(s)
