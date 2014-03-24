@@ -23,15 +23,19 @@ And most importantly:
 - your project _runs live_ (on your iPad) - you see the effect of changes in the code in (almost) realtime
 - your project _runs in a sandbox_   - whenever you make a mistake only that part of the code is affected, while the rest of the project keeps running; fix the error and you're right back in the program flow without restarting anything
 
-
 ### Setup
 Assuming your computer's IP is 192.168.1.10, you will keep your projects in a folder named CodeaProjects (this folder is generally referred to as _projectsRoot_) and you'll work on a Codea project called MyCoolGame:
+
+#### Command line
 
 - `git clone http://github.com/lowne/xCodea.git CodeaProjects; cd CodeaProjects` - or [download](https://github.com/lowne/xCodea/archive/dev.zip) the ZIP and extract its contents into CodeaProjects
 - `nano xCodea/EDIT_THIS.lua` - or open EDIT_THIS.lua inside the xCodea subfolder with a text editor
 - put in the (static) IP address or hostname (spaces and apostrophes will likely cause trouble, though) of your computer, as in `xCodea_server = "http://192.168.1.10:49374"` then save
 - start the server: `./xcodeaserver.py MyCoolGame` (alas this must necessarily be done in a terminal for now)
-- on the iPad, point Safari to the server: type `http://192.168.1.10:49374` in the location bar
+#### GUI
+Grab the .dmg file from the [latest release](https://github.com/lowne/xCodea/releases). Usual caveats apply for Gatekeeper (right-click, open) and firewall (the server requires inbound connections, eh?) It'll ask for your _projectsRoot_ at first launch, type it in. Then `Project->New Project->MyCoolGame`, then `Start server`.
+#### on the iPad (both GUI and cmdline)
+on the iPad, point Safari to the server: type `http://192.168.1.10:49374` in the location bar
 - select the entire text and copy it
 - launch Codea, long-press the _Add New Project_ button then tap _Paste into project_; call it **xCodea**
 - tap the right-pointing triangle to run xCodea :p
@@ -46,7 +50,7 @@ When xCodea on the iPad connects to the xCodea server any changes (files or depe
 In practice almost always you'll have been working on your project on the iPad while away from the computer. When you connect to xCodea it'll sync these changes back to the computer.
 In case of changes from both sides _on the same file_, the iPad version wins by default, overwriting the file on your computer.
 
-- In special circumstances (such as having two iPads, or calamitous corruption on your computer) you can manually force the sync direction with the `--push` and `--pull` options on the server [ **TODO** not yet implemented]
+- In special circumstances (such as having two iPads, or calamitous corruption on your computer) you can manually force the sync direction with the `--push` and `--pull` options on the server [ **TODO** not yet implemented in the GUI]
 
 You can disconnect (stop xCodea, quit Codea altogether, put the iPad to sleep, take the iPad on a long trip) whenever you want; the next time xCodea connects it'll sync any intervening changes and restart the project. There's no need to ever stop and restart the server unless you want to work on a different project (to stop the server, press ctrl-C in its terminal window).
 
@@ -71,6 +75,7 @@ Finally, if you're using [LDT](http://www.eclipse.org/koneki/ldt/) (or some othe
 - Set up keyboard shortcuts to take advantage of `eval.luac`. For example I use [BetterTouchTool](http://www.boastr.net/) to intercept some key combinations while in LDT:
 	- ⌘⏎: sends ⌘C, then executes `pbpaste > path/to/projectsRoot/eval.luac` (eval the current selection)
 	- ⌘⌥⏎: executes `echo "xCodea.restart()" > path/to/projectsRoot/eval.luac` (restart the project)
+	- ⌘\: navigates to the file and linenumber of the last error - xCodea allows this via non-default pasteboards but the macro is a bit more complex
 - If you want to see the value of a variable or expression you can send it "naked" to `eval.luac`, xCodea will do the required `print()` wrapping (and sending to the server log) for you.
 - When defining new classes or containers, use the idiom `myClass = myClass or class()` or `myObj = myObj or {}`. If you use `myClass = class()` myClass will be recreated every time the file is evaluated (which is every time the file is saved), destroying its state. Similarly, you should avoid initialising variables in the main chunk of a file - use setup functions (called in turn by the main `setup()`)
 - [ **TODO** LDT, with link to Codea execution environment]
@@ -83,10 +88,10 @@ xCodea was inspired by, and strives to improve upon, the excellent [LiveCodea](h
 ### Todo
 
 - complete this readme :)
-- push, pull commands [DONE, more testing needed]
+- push, pull commands [DONE in cmdline, more testing needed]
 - update() hook
 - if possible (almost certainly not), hijack tween() to use the update() hook
 - warn about files deleted server-side
 - extend the sandbox coverage to 100%; loadstring() is fully sandboxed, but dofile() and require() currently (probably) break it
-- asset management (waiting for Codea 2 (and hoping it won't break everything))
+- asset management
 - project discovery (and creation server-side) (~~possibly~~ available in a future Codea 2.x update)

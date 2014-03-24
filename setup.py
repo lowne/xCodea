@@ -9,7 +9,10 @@ from setuptools import setup
 
 APP = ['xCodea.py']
 DATA_FILES = []
-OPTIONS = {'argv_emulation': True,
+OPTIONS = {
+	'argv_emulation': True,
+	'iconfile':'xCodea.icns',
+	'resources':'xCodea/Main.lua',
     'plist': {
     	'CFBundleIdentifier': 'com.marklowne.xCodea',
         'LSUIElement': True,

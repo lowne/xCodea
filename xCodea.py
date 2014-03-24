@@ -90,12 +90,26 @@ def set_projectsRoot(folder):
 				got_warning = True
 	prefs['projectsRoot'] = folder
 	flush_prefs()
+	save_client_source()
 	return True
-#if not os.path.isfile(prefsfile):
-#	f=open(prefsfile,'w')
-#	f.write('{}')
-#	f.close()
-#prefs = json.load(open(prefsfile))
+
+def save_client_source():
+	contentdir = os.getcwd()
+	file = open('Main.lua')
+	source = file.read()
+	file.close()
+	root = prefs['projectsRoot']
+	xcodeadir = os.path.join(root,'xCodea')
+	if not os.path.isdir(xcodeadir):
+		os.mkdir(xcodeadir)
+	editpath = os.path.join(xcodeadir,'EDIT_THIS.lua')
+	file = open(editpath,'w')
+	file.write("xCodea_server = 'http://"+prefs['ip_addr']+"'\n")
+	file.close()
+	mainpath = os.path.join(xcodeadir,'Main.lua')
+	file = open(mainpath,'w')
+	file.write(source)
+	file.close()
 
 if not prefs.get('ip_addr'):
 	prefs['ip_addr'] = get_ip()+':49374'
