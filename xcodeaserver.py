@@ -53,18 +53,7 @@ import BaseHTTPServer
 from docopt import docopt
 import json
 
-x.shutdown = None
-x.counter=0
-x.projectsRoot = '.'
-x.srcdir = '.'
-x.project = ''
-x.cachefile = '.xcodea.cache'
-if not os.path.isfile(x.cachefile):
-	f=open(x.cachefile,'w')
-	f.write('{}')
-	f.close()
-x.cache = json.load(open(x.cachefile))
-x.ldtbuildpath = '.buildpath'
+is_running = False
 
 class XCodeaServer(BaseHTTPServer.BaseHTTPRequestHandler):
 	def do_HEAD(self):
@@ -73,6 +62,12 @@ class XCodeaServer(BaseHTTPServer.BaseHTTPRequestHandler):
 		x.do_HEAD(self)
 
 	def do_GET(self):
+		if self.path=='/done':
+			self.send_response(200)
+			self.end_headers()
+			x.log('Operation completed, exiting now.')
+			stop_server()
+			return
 		if DEV:
 			reload(x)
 		x.do_GET(self)
@@ -94,8 +89,13 @@ class XCodeaServer(BaseHTTPServer.BaseHTTPRequestHandler):
 			self.log_message('"%s" %s %s',
 		                 self.requestline, str(code), str(size))
 
-if __name__ == '__main__':
-	args = docopt(__doc__)
+httpd = BaseHTTPServer.HTTPServer(('', 49374), XCodeaServer)
+
+def start_server():
+	global is_running
+	global httpd
+	x.counter=0
+	x.log_buffer = []
 	proj=args['<projDir>']
 	#x.notify = 'terminal-notifier' if args['--notify'] else None
 	x.notify = args['--notify']
@@ -110,29 +110,49 @@ if __name__ == '__main__':
 	x.srcdir = args['--src']
 	x.pull = args['--pull']
 	x.push = args['--push']
+	x.cachefile = normpath(join(x.projectsRoot,'.xcodea.cache'))
+	if not isfile(x.cachefile):
+		f=open(x.cachefile,'w')
+		f.write('{}')
+		f.close()
+	x.cache = json.load(open(x.cachefile))
+	x.ldtbuildpath = '.buildpath'
+
+	x.gui_app = args.get('gui_app')
 
 	proj = normpath(proj)
 
 	if x.push:
 		if not isdir(join(x.projectsRoot,proj)):
-			print(x.colorwrap(x.RED,'Project '+proj+' not found!'))
+			x.colorprint(x.RED,'Project '+proj+' not found!')
 			sys.exit(1)
 		if not isfile(join(x.projectsRoot,proj,'Main.lua')):
-			print(x.colorwrap(x.RED,'Project '+proj+' is not a valid Codea project!'))
+			x.colorprint(x.RED,'Project '+proj+' is not a valid Codea project!')
 			sys.exit(1)
 	if proj=='xCodea':
 		print('Better not :p')
 		sys.exit(1)
 	if not isdir(join(x.projectsRoot,proj)):
-		print(x.colorwrap(x.RED,'Warning: project '+proj+' not found! Its folder will be created on successful connection'))
-		print(x.colorwrap(x.RED,'If you are using LDT, better create an empty project *first* so that dependencies can be synced correctly'))
+		x.colorprint(x.RED,'Warning: project '+proj+' not found! Its folder will be created on successful connection')
+		x.colorprint(x.RED,'If you are using LDT, better create an empty project *first* so that dependencies can be synced correctly')
 	x.project = proj
-	httpd = BaseHTTPServer.HTTPServer(('', 49374), XCodeaServer)
-	print(x.colorwrap(x.BLUE,'xCodea server started on port 49374'))
+	x.colorprint(x.BLUE,'xCodea server started on port 49374')
 	if x.pull:
-		print(x.colorwrap(x.RED,'Warning: will pull project '+proj+' from Codea. Any local files in the project or its dependencies will be overwritten or deleted.'))
+		x.colorprint(x.RED,'Warning: will pull project '+proj+' from Codea. Any local files in the project or its dependencies will be overwritten or deleted.')
 	if x.push:
-		print(x.colorwrap(x.RED,'Warning: will push project '+proj+' to Codea. Existing Codea tabs in the project or its dependencies will be overwritten or deleted.'))
-	while not x.shutdown:
-		httpd.handle_request()
+		x.colorprint(x.RED,'Warning: will push project '+proj+' to Codea. Existing Codea tabs in the project or its dependencies will be overwritten or deleted.')
+	is_running = True
+	httpd.serve_forever()
+	is_running = False
+#	while not x.shutdown:
+#		httpd.handle_request()
+#	is_running = False
 #	httpd.serve_forever()
+def stop_server():
+	httpd.shutdown()
+	is_running = False
+	x.colorprint(x.BLUE,'xCodea server stopped')
+
+if __name__ == '__main__':
+	args = docopt(__doc__)
+	start_server()

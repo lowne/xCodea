@@ -83,9 +83,10 @@ xCodea was inspired by, and strives to improve upon, the excellent [LiveCodea](h
 ### Todo
 
 - complete this readme :)
-- push, pull commands
+- push, pull commands [DONE, more testing needed]
 - update() hook
 - if possible (almost certainly not), hijack tween() to use the update() hook
 - warn about files deleted server-side
+- extend the sandbox coverage to 100%; loadstring() is fully sandboxed, but dofile() and require() currently (probably) break it
 - asset management (waiting for Codea 2 (and hoping it won't break everything))
 - project discovery (and creation server-side) (~~possibly~~ available in a future Codea 2.x update)

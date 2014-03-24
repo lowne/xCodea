@@ -12,7 +12,8 @@ from lxml import etree
 RED='31'
 GREEN='32'
 BLUE='34'
-
+NORMAL=''
+html_color={'31':'#F44','32':'#AFA','34':'#AAF','':'#EEE'}
 
 def adler32(str):
 	# TODO test with real unicode - probably broken
@@ -25,50 +26,62 @@ def adler32(str):
 		b = (b + a) % 65521
 	return '%04x%04x'%(b,a)
 
-def colorwrap(c,data):
-	if not color:return data
-	return '\x1b['+c+'m'+data+'\x1b[m'
+def colorprint(c,data):
+	if gui_app:
+		log_buffer.insert(0,'<div style="color:%s">%s</div>'%(html_color[c],data))
+		return
+	if color:
+		data = '\x1b['+c+'m'+data+'\x1b[m'
+	if c==RED:
+		sys.stderr.write(data)
+	else:
+		print(data)
 
 def error(data):
-	sys.stderr.write(colorwrap(RED,'[server] ERROR '+data))
-	if sound:
-		os.system('afplay /System/Library/Sounds/Sosumi.aiff')
-	elif notify:
+	colorprint(RED,'[server] ERROR '+data+'\n')
+	if notify:
 		os.system('terminal-notifier -title "xCodea server" -sound Sosumi -group xCodea.error -message "\\%s" > /dev/null'% (data.replace('"','\\"')))
+	elif sound:
+		os.system('afplay /System/Library/Sounds/Sosumi.aiff')
 
 def rerror(data):
 	for match in re.finditer('\[string "::(.+?)"\]:(.+?):',data):
 		snippet = match.group(1)
 		proj,file = snippet.split(':')
 		filename = path.normpath(path.join(projectsRoot,proj,srcdir,file+'.lua'))
+		filename = path.normpath(path.join(proj,srcdir,file+'.lua'))
+		os.system('echo "%s"|pbcopy -pboard find' % filename)
+		os.system('echo "%s"|pbcopy -pboard font' % match.group(2))
 		#filename = path.normpath(path.join(file+'.lua'))
 		data = data.replace(match.group(0),'('+filename+':'+match.group(2)+')')
 		#data = '('+filename+':'+match.group(2)+')'+data.replace(match.group(0),'')
 
-	sys.stderr.write(colorwrap(RED,data)+'\n')
-	if sound:
-		os.system('afplay /System/Library/Sounds/Sosumi.aiff')
-	elif notify:
+	colorprint(RED,data+'\n')
+	if notify:
 		os.system('terminal-notifier -title "xCodea ERROR" -sound Sosumi -group xCodea.error -message "\\%s" > /dev/null'% (data.replace('"','\\"')))
+	elif sound:
+		os.system('afplay /System/Library/Sounds/Sosumi.aiff')
 
 def vlog(data):
 	if verbose:
-		print(colorwrap(BLUE,'[server] '+data))
+		colorprint(BLUE,'[server] '+data)
 
 def log(data):
-	print(colorwrap(BLUE,'[server] '+data))
-	if sound:
-		os.system('afplay /System/Library/Sounds/Pop.aiff')
-	elif notify:
-		os.system('terminal-notifier -title "xCodea server" -sound Pop -group xCodea.server -message "\\%s" > /dev/null'% (data))
+	colorprint(BLUE,'[server] '+data)
+	#elif notify:
+	#	os.system('terminal-notifier -title "xCodea server" -sound Pop -group xCodea.server -message "\\%s" > /dev/null'% (data))
 
 def clog(data):
-	print(colorwrap(GREEN,data))
+	colorprint(GREEN,data)
+	if sound:
+		os.system('afplay /System/Library/Sounds/Pop.aiff')
 	if notify:
-		os.system('terminal-notifier -title "xCodea client" -group xCodea.client -message "\\%s" > /dev/null'% (data))
+		os.system('terminal-notifier -remove xCodea.error > /dev/null')
+	#if notify:
+	#	os.system('terminal-notifier -title "xCodea client" -group xCodea.client -message "\\%s" > /dev/null'% (data))
 
 def rlog(data):
-	print(data)
+	colorprint(NORMAL,data)
 
 def get_ldtbuildpath(proj):
 	bppath = path.join(projectsRoot,proj,ldtbuildpath)
@@ -97,12 +110,15 @@ def do_GET(httpd):
 		do_poll(httpd)
 	elif httpd.path=='/connect':
 		do_connect(httpd)
-	elif httpd.path=='/done':
+	elif httpd.path=='/server_log':
 		httpd.send_response(200)
+		#data = '<style>code{font-family:Lucida Grande,Consolas,monospace;}</style>'
+		data = '<body style="font-family:Lucida Grande;font-size:11pt;background:#222" >'+'\n'.join(log_buffer)
+		httpd.send_header('content-length',len(data))
+		httpd.send_header('content-type','text/html')
+		httpd.send_header('refresh','2;url=/server_log')
 		httpd.end_headers()
-		log('Operation completed, exiting now.')
-		global shutdown
-		shutdown = True
+		httpd.wfile.write(data)
 	elif httpd.path=='/':
 		editpath = path.join(projectsRoot,'xCodea',srcdir,'EDIT_THIS.lua')
 		mainpath = path.join(projectsRoot,'xCodea',srcdir,'Main.lua')
@@ -123,6 +139,10 @@ def do_GET(httpd):
 		else:
 			httpd.send_response(404)
 			httpd.end_headers()
+	elif httpd.path=='/favicon.ico':
+		httpd.send_response(200)
+		httpd.send_header('content-length',0)
+		httpd.end_headers()
 	else:
 		error('Invalid request!')
 		connected=None
