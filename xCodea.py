@@ -6,7 +6,7 @@ from time import sleep
 import xcodeaserver as xcs
 #import xcodealog as xlog
 
-app = rumps.App('xC')
+app = rumps.App('xCodea')
 prefsfile = '.xcodea.prefs'
 try:
 	with app.open(prefsfile) as f:
@@ -56,7 +56,7 @@ def click_serverIpPort(sender):
 			'Server address updated')
 		win.run()
 		sender.title = 'Server address: '+response.text
-	print(response.text)
+	#print(response.text)
 
 def click_projectsRoot(sender):
 	if set_projectsRoot(prefs['projectsRoot']):
@@ -78,7 +78,7 @@ def set_projectsRoot(folder):
 		folder = response.text
 		if response.clicked == 2:
 			return False
-		print(os.path.abspath(folder))
+		#print(os.path.abspath(folder))
 		exists = os.path.isdir(os.path.abspath(folder))
 		if not exists:
 			rumps.alert('Error','The specified folder does not exist!')
@@ -117,19 +117,30 @@ def scan_projects(sender):
 		app.menu['Project'].add(rumps.MenuItem(proj,callback=click_project))
 	app.menu['Project'].add(rumps.separator)
 	app.menu['Project'].add(rumps.MenuItem('Rescan',callback=scan_projects))
-	app.menu['Project'].add(rumps.MenuItem('New project...'))
+	app.menu['Project'].add(rumps.MenuItem('New project...',callback=new_project))
 
 def click_project(sender):
 	set_project(sender.title)
-	if xcs.is_running:
-		rumps.alert('Project changed','Please restart the server')
-		if menu_server.state:
-			click_server(menu_server)
 
 def set_project(proj):
 	app.menu['Project'].title = 'Project: '+(proj or '<NONE>')
 	prefs['project'] = proj
 	flush_prefs()
+	if xcs.is_running:
+		rumps.alert('Project changed','Please restart the server')
+		if menu_server.state:
+			click_server(menu_server)
+def new_project(sender):
+	project_valid = False
+	while not project_valid:
+		win = rumps.Window('The project must already exist in Codea','New project')
+		win.add_button('Cancel')
+		response = win.run()
+		if response.clicked==2: return
+		proj = response.text
+		if len(proj)>0:
+			set_project(proj)
+			project_valid = True
 
 def click_server(sender):
 	if not sender.state:
@@ -187,6 +198,7 @@ app.menu = [
 	]}, 
 	rumps.separator,
 ]
+app.title='xC'
 scan_projects(None)
 app.menu['Project'].title = 'Project: '+(prefs.get('project') or '<NONE>')
 menu_server = app.menu['Server']
