@@ -4,3 +4,4 @@
 rm -rf dist
 python setup.py py2app
 rm -rf build
+hdiutil create -volname xCodea -srcfolder dist -ov -format UDZO dist/xCodea.dmg
