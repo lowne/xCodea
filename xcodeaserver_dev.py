@@ -29,7 +29,7 @@ def adler32(str):
 def colorprint(c,data):
 	if gui_app:
 		log_buffer.insert(0,'<div style="color:%s">%s</div>'%(html_color[c],data))
-		return
+		#return
 	if color:
 		data = '\x1b['+c+'m'+data+'\x1b[m'
 	if c==RED:
@@ -200,22 +200,25 @@ def do_connect(httpd):
 	httpd.send_header('polling',pollingInterval)
 	if logging:	httpd.send_header('logging','true')
 	if verbose: httpd.send_header('verbose','true')
-	if pull: httpd.send_header('pull','true')
-	if push: httpd.send_header('push','true')
+	if pull: httpd.send_header('pull','true'); log('Starting pull command')
+	if push: httpd.send_header('push','true'); log('Starting push command')
 	#if watches: httpd.send_header('watches','true')
 	#if overwrite: httpd.send_header('overwrite','true')
 	httpd.send_header('project',project)
 	httpd.send_header('dependencies',':'.join(deps))
+	vlog('Sending dependencies: '+':'.join(deps))
 	data=''
+	datalog=''
 	deps.append(project)
 	for proj in deps:
 		files = (cache.get(proj) or dict()).get('files') or dict()
 		for file,chk in files.items():
 			data = data + proj+':'+file+':' + chk + ':'
+			datalog = datalog + proj+':'+file+', '
 	if push:
 		for proj in deps:
 			if cache.get(proj): cache[proj]['files'] = dict()
-	if not pull: httpd.send_header('checksums',data)
+	if not pull: httpd.send_header('checksums',data); vlog('Sending known files: '+datalog)
 	httpd.end_headers()
 
 def do_set_dependencies(httpd):
@@ -297,14 +300,16 @@ def do_delete(httpd):
 
 
 def	do_poll(httpd):
-	global counter
-	#sys.stdout.write('-\\|/'[counter]+'\b')
-	sys.stdout.write('- '[counter]+'\b')
-	counter = (counter + 1) % 2
-	sys.stdout.flush()
+	if not gui_app:
+		global counter
+		#sys.stdout.write('-\\|/'[counter]+'\b')
+		sys.stdout.write('- '[counter]+'\b')
+		counter = (counter + 1) % 2
+		sys.stdout.flush()
 	proj = httpd.headers.getheader('project') or ''
+	#print(proj,project)
 	if proj!=project:
-		error('Invalid state in request!')
+		error('Invalid state in request (wrong project). Please restart the client.')
 		httpd.send_response(500)
 		httpd.end_headers()
 		return

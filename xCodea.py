@@ -2,6 +2,7 @@
 # encoding: utf-8
 
 import rumps,os,json,socket,thread,webbrowser
+from time import sleep
 import xcodeaserver as xcs
 #import xcodealog as xlog
 
@@ -120,6 +121,11 @@ def scan_projects(sender):
 
 def click_project(sender):
 	set_project(sender.title)
+	if xcs.is_running:
+		rumps.alert('Project changed','Please restart the server')
+		if menu_server.state:
+			click_server(menu_server)
+
 def set_project(proj):
 	app.menu['Project'].title = 'Project: '+(proj or '<NONE>')
 	prefs['project'] = proj
@@ -183,14 +189,14 @@ app.menu = [
 ]
 scan_projects(None)
 app.menu['Project'].title = 'Project: '+(prefs.get('project') or '<NONE>')
-
+menu_server = app.menu['Server']
 toggles = app.menu['Preferences']
 toggles['Start server at launch'].state = prefs.get('startAtLaunch') or False
 toggles['Log client print()s'].state = prefs.get('logging') or False
 toggles['Show errors in notification center'].state = prefs.get('notify') or False
 toggles['Emit sound on client events'].state = prefs.get('sound') or False
 toggles['Verbose logging'].state = prefs.get('verbose') or False
-if prefs.get('startAtLaunch') and prefs.get('project'): click_server(app.menu['Server'])
-else: app.menu['Server'].title = 'Start server'
+if prefs.get('startAtLaunch') and prefs.get('project'): click_server(menu_server)
+else: menu_server.title = 'Start server'
 app.run()
 #xlog.start()

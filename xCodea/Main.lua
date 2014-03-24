@@ -276,38 +276,46 @@ function xc.connected(data,status,headers)
 
 	xc.projects = i:getDependencies()
 	local localdeps = table.concat(xc.projects,':')
+	table.insert(xc.projects,xc.project)
 
 	local remotefiles = {}
 	for file,chk in string.gmatch(headers['checksums'] or '','(.-:.-):(.-):') do
 		remotefiles[file] = chk
 	end
 
-	table.insert(xc.projects,xc.project)
+	local remotedeps = {}
+	for dep in ((headers['dependencies'] or '')..':'):gmatch('(..-):') do
+		local i=xc.InfoPlist(dep)
+		if not i:exists() then
+			xc.fatal_error('Dependency "'..dep..'" that was received\n'..
+				'from the server does not exist in Codea!\n'..
+				'xCodea cannot create new projects in Codea, so you must do it manually.\n'..
+				'You can then reconnect to the xCodea server.')
+			return
+		end
+		table.insert(remotedeps,dep)
+	end
+
 	if xc.remote_pull then xc.xlog('Pull request from server. Remote files will be overwritten.')
 	elseif xc.remote_push then
 		xc.xlog('Push request from server. Local files will be overwritten.')
-		local deps = headers['dependencies']
-		if deps then
-			xc.xlog('Received new dependencies: '..deps)
-			local remotedeps = {}
-			for dep in (deps..':'):gmatch('(..-):') do
-				local i=xc.InfoPlist(dep)
-				if not i:exists() then
-					xc.fatal_error('Dependency "'..dep..'" that was added\n'..
-						'on the server does not exist in Codea!\n'..
-						'xCodea cannot create new projects in Codea, so you must do it manually.\n'..
-						'You can then reconnect to the xCodea server.')
-					return
-				end
-				table.insert(remotedeps,dep)
-			end
-			local i=xc.InfoPlist(xc.project)
-			i:setDependencies(remotedeps)
-		end
+		local i=xc.InfoPlist(xc.project)
+		i:setDependencies(remotedeps)
 		return xc.poll()
 	end
 
+	-- remove files from old server-side deps from remotefiles, or they'll get deleted on the server
+	-- (if i remove a dep in codea, it doesn't mean i want its files nuked on the server)
+	local remotedepsdict = xc.array2dict(remotedeps)
+	for _,v in pairs(xc.projects) do
+		remotedepsdict[v] = nil
+	end
+	for v,_ in pairs(remotefiles) do
+		local elproj = string.sub(v,1,string.find(v,':')-1)
+		if remotedepsdict[elproj] then remotefiles[v] = nil xc.vlog('File '..v..' belongs to a removed dependency, ignoring') end
+	end
 
+	-- determine files to send (changed locally wrt server known files)
 	local sendfiles={}
 	for _,proj in pairs(xc.projects) do
 		local pfiles = listProjectTabs(proj)
@@ -318,7 +326,7 @@ function xc.connected(data,status,headers)
 			if chk ~= remotefiles[file] then
 				sendfiles[file] = true
 			end
-			remotefiles[file]=nil
+			remotefiles[file] = nil -- don't delete the file right before we send the update :)
 		end
 	end
 
@@ -470,6 +478,22 @@ function xc.adler32(data)
 	end
 	return string.format('%04x',b)..string.format('%04x',a)
 		--	return b*65536 + a -- loss of precision (cough codea)
+end
+function xc.dict2array(dict)
+	local a = {}
+	for v,_ in pairs(dict) do
+		table.insert(a,v)
+	end
+	table.sort(a)
+	return a
+end
+
+function xc.array2dict(arr)
+	local d = {}
+	for _,v in ipairs(arr) do
+		d[v] = true
+	end
+	return d
 end
 
 function xc.splitstring(str,sep)
