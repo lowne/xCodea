@@ -32,10 +32,13 @@ Assuming your computer's IP is 192.168.1.10, you will keep your projects in a fo
 - `nano xCodea/EDIT_THIS.lua` - or open EDIT_THIS.lua inside the xCodea subfolder with a text editor
 - put in the (static) IP address or hostname (spaces and apostrophes will likely cause trouble, though) of your computer, as in `xCodea_server = "http://192.168.1.10:49374"` then save
 - start the server: `./xcodeaserver.py MyCoolGame` (alas this must necessarily be done in a terminal for now)
+
 #### GUI
 Grab the .dmg file from the [latest release](https://github.com/lowne/xCodea/releases). Usual caveats apply for Gatekeeper (right-click, open) and firewall (the server requires inbound connections, eh?) It'll ask for your _projectsRoot_ at first launch, type it in. Then `Project->New Project->MyCoolGame`, then `Start server`.
+
 #### on the iPad (both GUI and cmdline)
-on the iPad, point Safari to the server: type `http://192.168.1.10:49374` in the location bar
+
+- point Safari to the server: type `http://192.168.1.10:49374` in the location bar
 - select the entire text and copy it
 - launch Codea, long-press the _Add New Project_ button then tap _Paste into project_; call it **xCodea**
 - tap the right-pointing triangle to run xCodea :p
@@ -75,7 +78,7 @@ Finally, if you're using [LDT](http://www.eclipse.org/koneki/ldt/) (or some othe
 - Set up keyboard shortcuts to take advantage of `eval.luac`. For example I use [BetterTouchTool](http://www.boastr.net/) to intercept some key combinations while in LDT:
 	- ⌘⏎: sends ⌘C, then executes `pbpaste > path/to/projectsRoot/eval.luac` (eval the current selection)
 	- ⌘⌥⏎: executes `echo "xCodea.restart()" > path/to/projectsRoot/eval.luac` (restart the project)
-	- ⌘\: navigates to the file and linenumber of the last error - xCodea allows this via non-default pasteboards but the macro is a bit more complex
+	- ⌘\\: navigates to the file and linenumber of the last error - xCodea allows this via non-default pasteboards but the macro is a bit more complex
 - If you want to see the value of a variable or expression you can send it "naked" to `eval.luac`, xCodea will do the required `print()` wrapping (and sending to the server log) for you.
 - When defining new classes or containers, use the idiom `myClass = myClass or class()` or `myObj = myObj or {}`. If you use `myClass = class()` myClass will be recreated every time the file is evaluated (which is every time the file is saved), destroying its state. Similarly, you should avoid initialising variables in the main chunk of a file - use setup functions (called in turn by the main `setup()`)
 - [ **TODO** LDT, with link to Codea execution environment]
