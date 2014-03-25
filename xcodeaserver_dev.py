@@ -1,14 +1,16 @@
 #!/usr/local/bin/python2.7
 # encoding: utf-8
 
-import sys,os,time,re,json
+import sys,os,time,re,json,subprocess
 from os import path,listdir
 from lxml import etree
+from time import sleep
 
 #---------------------- utility functions
 #----------------------------------------
 
-
+#POLLING_MAX_WAIT = 0 # TODO long poll disabled until http.request bug is fixed
+POLLING_WAIT = 0.2
 RED='31'
 GREEN='32'
 BLUE='34'
@@ -37,12 +39,19 @@ def colorprint(c,data):
 	else:
 		print(data)
 
+def shell(*args):
+	try:
+		subprocess.Popen(list(args),stdout=open(os.devnull, 'wb'))
+	except OSError as e:
+		print("Execution failed: ",e)
+
 def error(data):
 	colorprint(RED,'[server] ERROR '+data+'\n')
 	if notify:
-		os.system('terminal-notifier -title "xCodea server" -sound Sosumi -group xCodea.error -message "\\%s" > /dev/null'% (data.replace('"','\\"')))
+		shell('terminal-notifier','-title','xCodea server',
+			'-sound','Sosumi','-group','xCodea.error','-message',data)
 	elif sound:
-		os.system('afplay /System/Library/Sounds/Sosumi.aiff')
+		shell('afplay','/System/Library/Sounds/Sosumi.aiff')
 
 def rerror(data):
 	for match in re.finditer('\[string "::(.+?)"\]:(.+?):',data):
@@ -60,7 +69,7 @@ def rerror(data):
 	if notify:
 		os.system('terminal-notifier -title "xCodea ERROR" -sound Sosumi -group xCodea.error -message "\\%s" > /dev/null'% (data.replace('"','\\"')))
 	elif sound:
-		os.system('afplay /System/Library/Sounds/Sosumi.aiff')
+		shell('afplay','/System/Library/Sounds/Sosumi.aiff')
 
 def vlog(data):
 	if verbose:
@@ -74,9 +83,9 @@ def log(data):
 def clog(data):
 	colorprint(GREEN,data)
 	if sound:
-		os.system('afplay /System/Library/Sounds/Pop.aiff')
+		shell('afplay','/System/Library/Sounds/Pop.aiff')
 	if notify:
-		os.system('terminal-notifier -remove xCodea.error > /dev/null')
+		shell('terminal-notifier','-remove','xCodea.error')
 	#if notify:
 	#	os.system('terminal-notifier -title "xCodea client" -group xCodea.client -message "\\%s" > /dev/null'% (data))
 
@@ -188,6 +197,8 @@ def do_POST(httpd):
 #----------------------------------------------
 
 def do_connect(httpd):
+	global polling_wait
+	polling_wait = 0.1
 	log('Client connected to project '+project)
 	if not cache.get(project):
 		cache[project] = dict()
@@ -313,70 +324,89 @@ def	do_poll(httpd):
 		httpd.send_response(500)
 		httpd.end_headers()
 		return
-	bp = get_ldtbuildpath(project)
-	if bp is not None:
-		deps = sorted([e.get('path')[1:] for e in bp if e.get('kind')=='prj'])
-		if deps!=cache[project]['dependencies']:
-			log('Dependencies changed in .buildpath, sending updated: '+', '.join(deps))
-			httpd.send_response(200)
-			httpd.send_header('project',project)
-			httpd.send_header('dependencies',':'.join(deps))
-			#cache[project]['dependencies']=deps
-			#flush_cache()
-			return
-	deps=sorted(cache[project]['dependencies'])
-	deps.append(project)
-	known_files = set()
-	for proj in deps:
-		if not cache.get(proj): cache[proj]=dict()
-		if not cache[proj].get('files'): cache[proj]['files'] = dict()
-		for filename in cache[proj]['files'].keys():
-			known_files.add(proj+':'+filename)
-		projpath = path.normpath(path.join(projectsRoot,proj,srcdir))
-		for fullname in [f for f in listdir(projpath) if path.isfile(path.join(projpath,f)) and not f.startswith('.')]:
-			filepath = path.join(projpath,fullname)
-			filename, ext = path.splitext(fullname)
-			tabpath = proj+':'+filename
-			if ext=='.lua':
-				known_files.discard(tabpath)
-				file = open(filepath)
-				data = file.read()
-				file.close()
-				chk = adler32(data)
-				if chk != cache[proj]['files'].get(filename):
-					vlog('Sending updated file: '+tabpath)
-					httpd.send_response(200)
-					httpd.send_header('project',project)
-					httpd.send_header('file',tabpath)
-					httpd.send_header('content-length',len(data))
-					httpd.end_headers()
-					httpd.wfile.write(data)
-					#cache[proj]['files'][filename] = chk
-					#flush_cache()
-					return
-	for tabpath in known_files:
-		if tabpath.split(':')[1]!='Main': # cannot delete Main.lua!
-			vlog('Sending delete request for removed file: '+tabpath)
-			httpd.send_response(200)
-			httpd.send_header('project',project)
-			httpd.send_header('delete',tabpath)
-			httpd.end_headers()
-			return
-	evalpath = path.normpath(path.join(projectsRoot,'eval.luac'))
-	if path.isfile(evalpath):
-		file = open(evalpath)
-		data = file.read()
-		file.close()
-		vlog('Sending eval request')
-		httpd.send_response(200)
-		httpd.send_header('project',project)
-		httpd.send_header('eval','true')
-		httpd.send_header('content-length',len(data))
-		httpd.end_headers()
-		httpd.wfile.write(data)
-		os.remove(evalpath)
-		return
-
+	elapsed = 0
+	global polling_wait
+	acc_wait = polling_wait
+	polling_wait = 0.1
+	while elapsed<acc_wait:
+		elapsed = elapsed + 0.1
+		bp = get_ldtbuildpath(project)
+		if bp is not None:
+			deps = sorted([e.get('path')[1:] for e in bp if e.get('kind')=='prj'])
+			if deps!=cache[project]['dependencies']:
+				log('Dependencies changed in .buildpath, sending updated: '+', '.join(deps))
+				httpd.send_response(200)
+				httpd.send_header('project',project)
+				httpd.send_header('dependencies',':'.join(deps))
+				#cache[project]['dependencies']=deps
+				#flush_cache()
+				return
+		deps=sorted(cache[project]['dependencies'])
+		deps.append(project)
+		known_files = set()
+		for proj in deps:
+			if not cache.get(proj): cache[proj]=dict()
+			if not cache[proj].get('files'): cache[proj]['files'] = dict()
+			for filename in cache[proj]['files'].keys():
+				known_files.add(proj+':'+filename)
+			projpath = path.normpath(path.join(projectsRoot,proj,srcdir))
+			for fullname in [f for f in listdir(projpath) if path.isfile(path.join(projpath,f)) and not f.startswith('.')]:
+				filepath = path.join(projpath,fullname)
+				filename, ext = path.splitext(fullname)
+				tabpath = proj+':'+filename
+				if ext=='.lua':
+					known_files.discard(tabpath)
+					file = open(filepath)
+					data = file.read()
+					file.close()
+					chk = adler32(data)
+					if chk != cache[proj]['files'].get(filename):
+						vlog('Sending updated file: '+tabpath)
+						httpd.send_response(200)
+						httpd.send_header('project',project)
+						httpd.send_header('file',tabpath)
+						httpd.send_header('content-length',len(data))
+						httpd.end_headers()
+						httpd.wfile.write(data)
+						#cache[proj]['files'][filename] = chk
+						#flush_cache()
+						return
+		for tabpath in known_files:
+			if tabpath.split(':')[1]!='Main': # cannot delete Main.lua!
+				vlog('Sending delete request for removed file: '+tabpath)
+				httpd.send_response(200)
+				httpd.send_header('project',project)
+				httpd.send_header('delete',tabpath)
+				httpd.end_headers()
+				return
+		evalpath = path.normpath(path.join(projectsRoot,'eval.luac'))
+		global last_eval
+		if path.isfile(evalpath):
+#			with open(evalpath, 'a+') as f:
+#			   f.seek(0)
+#			   data = f.read()
+#			   f.seek(0)
+#			   f.truncate()
+#			   f.flush()
+#			   os.fsync(f.fileno())
+   			file = open(evalpath)
+			data = file.read()
+			file.close()
+			os.remove(evalpath)
+			if data != last_eval:
+				last_eval = data
+				vlog('Sending eval request')
+				httpd.send_response(200)
+				httpd.send_header('project',project)
+				httpd.send_header('eval','true')
+				httpd.send_header('content-length',len(data))
+				httpd.end_headers()
+				httpd.wfile.write(data)
+				return
+		else:
+			last_eval = ''
+		sleep(0.1)
+	polling_wait = min(acc_wait + 0.1, POLLING_MAX_WAIT)
 	httpd.send_response(204)
 	httpd.end_headers()
 

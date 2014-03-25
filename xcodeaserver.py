@@ -5,8 +5,9 @@
 
 Usage: 
   xcodeaserver.py <projDir> [--root=<projectsRoot>] [--src=<srcSubDir>]
-                            [--color] [--notify|--sound] [--logging]
+                            [--color] [--notify] [--sound] [--logging]
                             [--polling=<interval>] [--verbose]
+                            [--long-polling]
   xcodeaserver.py --push [-csv] <projDir>
   xcodeaserver.py --pull [-csv] <projDir>
   xcodeaserver.py --help
@@ -17,11 +18,14 @@ Options:
   --src=<srcSubDir>         Location of .lua files in the project directory
                             (e.g. use --src=src for Eclipse/LDT) [default: .]
   -s --sound                Use afplay for feedback (sounds)
-  -n --notify               Use terminal-notifier for feedback
+  -n --notify               Use terminal-notifier for feedback on errors
   -c --color                Colorize output
   -l --logging              Log print() statements from Codea
   -p --polling=<interval>   Polling interval in seconds [default: 1]
   -v --verbose              Debug logging
+
+  --long-polling            Enable long polling (WARNING: Codea will crash when
+                            you back out of xCodea)
 
   --pull                    Pulls
   --push                    Pushes
@@ -95,13 +99,16 @@ def start_server():
 	global is_running
 	global httpd
 	x.counter=0
+	x.polling_wait = 0.1
+	x.last_eval = ''
+	x.POLLING_MAX_WAIT = args['--long-polling'] and 4 or 0.1
 	x.log_buffer = []
 	proj=args['<projDir>']
 	#x.notify = 'terminal-notifier' if args['--notify'] else None
 	x.notify = args['--notify']
 	x.sound = args['--sound']
 	x.color = args['--color']
-	x.pollingInterval = args['--polling']	
+	x.pollingInterval = args['--long-polling'] and 0.1 or args['--polling']
 	x.logging = args['--logging']
 	#x.watches = args['--watches']
 	x.verbose = args['--verbose']
