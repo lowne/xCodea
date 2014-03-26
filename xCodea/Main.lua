@@ -13,6 +13,7 @@ local xc = {} -- #xc
 function xc.make_sandbox()
 	local tab = xc.to_sandbox[1]
 	if not tab then
+		xc.hijack_update()
 		if xc.sandbox_started then return true end
 		return xc.start_sandbox()
 	end
@@ -35,6 +36,62 @@ function xc.start_sandbox()
 	end
 end
 
+function xc.hijack_update()
+	if xCodea._SANDBOX.update then
+		if not xc.draw_original then xc.draw_original = xCodea._SANDBOX.draw end
+		local found = xc.find_update_hook(xc.draw_original)
+		if found then
+			xc.vlog('Found update() hook')
+			local success = loadstring(found,'>>[xCodea]')
+			if success then
+				setfenv(success,xCodea._SANDBOX)
+				success = xpcall(success,xc.error_handler)
+				if success then
+					xc.vlog('update() hook successfully hijacked')
+					xc.has_update_hook = true
+				end
+			end
+		end
+	end
+end
+
+function xc.find_update_hook(m)
+	--	local m = xCodea._SANDBOX.draw
+	local result = ''
+	repeat
+		print('Searching for',tostring(m)..'()')
+		local target = type(m)=='function' and m or xCodea._SANDBOX[m]
+		if not target then
+			print("DRAMA!")
+			return
+		end
+		local info = debug.getinfo(target)
+		if not info then print('NOT FOUND!')return end
+		local tab =	info.source:sub(3,-1)
+		print('Found in',tab)
+		if tab=='[xCodea]' then return end
+		local source_tab = readProjectTab(tab)
+		local source_arr = xc.splitstring(source_tab,'\n')
+		local chunk = table.concat(source_arr,'\n',info.linedefined,info.lastlinedefined) -- #string
+		result = chunk:gsub('\n','__NEWLINE_XC_'):gsub('%s+',' ')
+		chunk = chunk:gsub('%s+','')
+		-- it can be: draw = function() XXXXX()
+		-- or         function draw() XXXXXX()
+		m = chunk:match('..-=.-function%(%)(.-)%(%)') or chunk:match('function..-%(%)(.-)%(%)')
+		print('It calls',m)
+		local upn = nil local upv = nil local i = 1
+		repeat
+			upn,upv = debug.getupvalue(target,i)
+			--			print(upn,upv)
+			i = i + 1
+		until upn == m or not upn
+		if upn then print(upn..' is an upvalue:',upv) m=upv end
+	until m == 'update' or not m
+	if not m then print('update() not found') return end
+	return result:gsub('__NEWLINE_XC_','\n'):gsub('update%(%)','')
+		-- result is "function last_draw_in_chain() --update() is snipped .... end"
+end
+
 function xc.run_sandbox()
 	-- <OLD> these used to be wrapped in: if xCodea._SANDBOX.draw ~= _G.draw then
 	-- having them declared in the sandbox a priori makes it unnecessary
@@ -42,10 +99,13 @@ function xc.run_sandbox()
 	-- brought them back and removed declarations from sandbox as it could break some
 	-- 'creative' ways to hijack them from dependencies
 	draw = function()
+		xc._update_callbacks()
+		xpcall(function()xc._tween_update(DeltaTime)end,xc.tween_error_handler)
+
 		-- TODO
-		--		if xCodea._SANDBOX.update then
-		--			xpcall(xCodea._SANDBOX.update,xc.error_handler)
-		--		end
+		if xc.has_update_hook then
+			xpcall(xCodea._SANDBOX.update,xc.error_handler)
+		end
 		if xCodea._SANDBOX.draw and xCodea._SANDBOX.draw ~= _G.draw then
 			xpcall(xCodea._SANDBOX.draw,xc.error_handler)
 		end
@@ -71,10 +131,31 @@ function xc.run_sandbox()
 			xpcall(function() xCodea._SANDBOX.collide(contact) end, xc.error_handler)
 		end
 	end
+	--	if xc.pending_tween then
+	--		local success = pcall(tween.play,xc.pending_tween)
+	--		if success then xc.pending_tween = nil else tween.stop(xc.pending_tween)end
+	--	end
 	xc.vlog('Sandbox (re)started')
 	return true
 end
-
+function xc.pretty_print(...)
+	local n = select('#',...)
+	if n==0 then return 'nil' end
+	local resp = {}
+	for i=1, n do
+		local arg = select(i,...)
+		if type(arg)~='table' then table.insert(resp,tostring(arg))
+		else
+			local t = {'{'}
+			for k, v in pairs(arg) do
+				table.insert(t,'  '..tostring(k)..': '..tostring(v))
+			end
+			table.insert(t,'}')
+			table.insert(resp,table.concat(t,'\n'))
+		end
+	end
+	return table.concat(resp,', ')
+end
 function xc.eval(code,name,log)
 	xc.vlog('Eval: '..name)
 	--	if code=='restart()' then loadstring(code)() end
@@ -95,23 +176,27 @@ function xc.eval(code,name,log)
 	--setfenv(1,_G) -- FIXME test??
 	if success then
 		if is_repl then
-			return xc.log('[eval] '..name..' =>'..(results[2] and '' or ' nil'),unpack(results,2))
+			--			return xc.log('[eval] '..name..' => '..	xc.pretty_print(results[2]),unpack(results,2))
+			return xc.log('[eval] '..name..' => '..	xc.pretty_print(unpack(results,2)))
 		end
 		xc.error = nil
 		return xc.sandbox_started and xc.run_sandbox() or true
 	end
 end
 
+
 function xc.sandbox_error(err,is_runtime)
 	--tween.stop(xc.tween)
 	xc.log_error(err,is_runtime)
 	draw = function()
+		xc._update_callbacks()
+		pcall(function()xc._tween_update(DeltaTime)end)
 		-- TODO
-		--		if xCodea._SANDBOX.update then
-		--			pcall(xCodea._SANDBOX.update)
-		--		end
+		if xc.has_update_hook then
+			pcall(xCodea._SANDBOX.update)
+		end
 		if xCodea._SANDBOX.draw ~= _G.draw then
-			local success = pcall(xCodea._SANDBOX.draw)
+			local success,err = pcall(xCodea._SANDBOX.draw)
 			if not success then background(40) end
 		else
 			background(40)
@@ -121,9 +206,26 @@ function xc.sandbox_error(err,is_runtime)
 	end
 end
 
+function xc.tween_error_handler(err)
+	local lvl=2 local info=nil
+	repeat
+		lvl = lvl + 1
+		info = debug.getinfo(lvl)
+	until lvl == 20 or not info or info.name=='finishTween'
+	if info then
+		local name1,tweenid = debug.getlocal(lvl,1)
+		tweenid.callback = nil
+		--		xc.pending_tween = tweenid
+		tween.stop(tweenid)
+	else
+		tween.stopAll()
+	end
+	err=err..debug.traceback('',3):gsub('%[C%]:.*','')
+	xc.sandbox_error(err,true)
+end
+
 function xc.error_handler(err)
-	--err=err..debug.traceback()
-	err=err..debug.traceback('',2):gsub('%[C%]:.*','')
+	err=err..debug.traceback('',3):gsub('%[C%]:.*','')
 	xc.sandbox_error(err,true)
 end
 
@@ -164,7 +266,7 @@ end
 function xc.null() end
 
 function xc.log_error(s,is_sandbox)
-	xc.error = s
+	xc.error = xc.error or s
 	s='[client] '..(is_sandbox and 'runtime 'or 'syntax ')..'error: '..s -- BASIC yeah! :)
 	print(s)
 	http.request(xCodea_server..'/error',xc.null,xc.null,{method='POST',data=s})
@@ -183,11 +285,12 @@ function xc.log(...)
 		table.insert(sarg, tostring(v))
 	end
 	if #sarg>0 then xc.log_buffer = xc.log_buffer..table.concat(sarg,' ')..'\n' end
-	tween.stop(xc.ltween)
+	--	tween.stop(xc.ltween)
 	if #xc.log_buffer>100 then
 		xc.send_log()
 	elseif #xc.log_buffer>2 then
-		xc.ltween=tween.delay(0.2,xc.send_log)
+		xc.register_callback(0.2,xc.send_log)
+		--		xc.ltween=tween.delay(0.2,xc.send_log)
 	end
 end
 
@@ -212,6 +315,8 @@ end
 
 function xc.try_connect()
 	draw = function()
+		xc._update_callbacks()
+		--		xc._tween_update(DeltaTime)
 		background(40)
 		xc.draw_status()
 	end
@@ -223,7 +328,8 @@ function xc.try_connect()
 
 	local function not_connected()
 		xc.error = 'Cannot connect!'
-		xc.tween = tween.delay(xc.polling_interval,xc.try_connect)
+		--		xc.tween = tween.delay(xc.polling_interval,xc.try_connect)
+		xc.register_callback(xc.polling_interval,xc.try_connect)
 	end
 	http.request(xCodea_server..'/connect',xc.connected,not_connected)
 end
@@ -238,7 +344,8 @@ end
 function xc.connected(data,status,headers)
 	if status~=200 then
 		xc.log_error('Received status '..status)
-		xc.tween = tween.delay(xc.polling_interval,xc.try_connect)
+		--		xc.tween = tween.delay(xc.polling_interval,xc.try_connect)
+		xc.register_callback(xc.polling_interval,xc.try_connect)
 		return
 	end
 	for k,v in pairs(headers) do
@@ -396,8 +503,9 @@ function xc.poll()
 			if not xc.error then
 				xc.make_sandbox()
 			end
-			tween.stop(xc.tween)
-			xc.tween = tween.delay(xc.polling_interval,xc.poll)
+			--			tween.stop(xc.tween)
+			--			xc.tween = tween.delay(xc.polling_interval,xc.poll)
+			xc.register_callback(xc.polling_interval,xc.poll)
 			return
 		end
 		if xc.project~=headers['project'] then
@@ -434,8 +542,9 @@ function xc.poll()
 			local name=#data>23 and data:sub(1,20)..'...' or data
 			name=name:gsub('\n',' ')
 			xc.xlog('Received eval request: '..name)
-			tween.stop(xc.tween)
-			xc.tween = tween.delay(xc.polling_interval,xc.poll)
+			--			tween.stop(xc.tween)
+			--			xc.tween = tween.delay(xc.polling_interval,xc.poll)
+			xc.register_callback(xc.polling_interval,xc.poll)
 			return xc.eval(data,name,true)
 		end
 		local file = headers['file']
@@ -454,7 +563,9 @@ function xc.poll()
 
 			if proj==xc.project or name~='Main' then
 				xc.error = nil
-				if file then table.insert(xc.to_sandbox,file) end
+				if file then
+					table.insert(xc.to_sandbox,file)
+				end
 			end
 			local function file_success(data,status,headers)
 				if status~=200 then xc.log_error('Received status '..status) return end
@@ -505,6 +616,23 @@ function xc.splitstring(str,sep)
 	end
 	table.insert(arr,string.sub(str,pos))
 	return arr
+end
+
+function xc.register_callback(delay,fn)
+	for t in pairs(xc._callbacks) do
+		if t.fn == fn then xc._callbacks[t]=nil end -- only one callback per function
+	end
+	local t = {time = 0, expire = math.max(delay,0.01), fn = fn}
+	xc._callbacks[t] = t
+end
+function xc._update_callbacks()
+	for t in pairs(xc._callbacks) do
+		t.time = t.time + DeltaTime
+		if t.time >= t.expire then
+			xc._callbacks[t] = nil
+			t.fn()
+		end
+	end
 end
 
 -- INFOPLIST ----------------------------------
@@ -618,16 +746,22 @@ xCodea.restart = function()
 
 	xc.project = ''
 	xc.projects = {}
-	xc.tween = xc.tween or tween.delay(0,function()end)
-	xc.ltween = xc.ltween or tween.delay(0,function()end)
+	xc._callbacks = {}
+	--	xc.tween = xc.tween or tween.delay(0,function()end)
+	--	xc.ltween = xc.ltween or tween.delay(0,function()end)
 	xc.log_buffer = ''
 	xc.status = {}
 	xc.to_sandbox = {}
 	xc.sandbox_started=nil
 
 	output.clear()
-	tween.stop(xc.tween)
-	tween.stop(xc.ltween)
+	--	tween.stop(xc.tween)
+	--	tween.stop(xc.ltween)
+	if not xc._tween_update then
+		xc._tween_update = tween.update
+		tween.update = function() end
+	end
+	-- tween.resetAll()
 	xc.try_connect()
 end
 

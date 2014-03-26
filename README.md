@@ -31,7 +31,7 @@ Assuming your computer's IP is 192.168.1.10, you will keep your projects in a fo
 - `git clone http://github.com/lowne/xCodea.git CodeaProjects; cd CodeaProjects` - or [download](https://github.com/lowne/xCodea/archive/dev.zip) the ZIP and extract its contents into CodeaProjects
 - `nano xCodea/EDIT_THIS.lua` - or open EDIT_THIS.lua inside the xCodea subfolder with a text editor
 - put in the (static) IP address or hostname (spaces and apostrophes will likely cause trouble, though) of your computer, as in `xCodea_server = "http://192.168.1.10:49374"` then save
-- start the server: `./xcodeaserver.py MyCoolGame` (alas this must necessarily be done in a terminal for now)
+- start the server: `./xcodeaserver.py MyCoolGame` (I suggest adding `-lcsn` for remote logging, colour output, sound and notifications on errors)
 
 #### GUI
 Grab the .dmg file from the [latest release](https://github.com/lowne/xCodea/releases). Usual caveats apply for Gatekeeper (right-click, open) and firewall (the server requires inbound connections, eh?) It'll ask for your _projectsRoot_ at first launch, type it in. Then `Project->New Project->MyCoolGame`, then `Start server`.
@@ -92,8 +92,8 @@ xCodea was inspired by, and strives to improve upon, the excellent [LiveCodea](h
 
 - complete this readme :)
 - push, pull commands [DONE in cmdline, more testing needed]
-- update() hook
-- if possible (almost certainly not), hijack tween() to use the update() hook
+- update() hook [DONE]
+- if possible (almost certainly not), hijack tween() to use the update() hook [DONE, it even has its own update loop; on error it'll kill the offending callback to let the sandbox keep running]
 - warn about files deleted server-side
 - extend the sandbox coverage to 100%; loadstring() is fully sandboxed, but dofile() and require() currently (probably) break it
 - asset management
