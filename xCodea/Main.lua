@@ -177,7 +177,7 @@ function xc.eval(code,name,log)
 	if success then
 		if is_repl then
 			--			return xc.log('[eval] '..name..' => '..	xc.pretty_print(results[2]),unpack(results,2))
-			return xc.log('[eval] '..name..' => '..	xc.pretty_print(unpack(results,2)))
+			xc.log('[eval] '..name..' => '..xc.pretty_print(unpack(results,2)))
 		end
 		xc.error = nil
 		return xc.sandbox_started and xc.run_sandbox() or true
