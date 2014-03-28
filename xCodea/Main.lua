@@ -725,18 +725,50 @@ xCodea.restart = function()
 			end
 			return success,error
 		end,
-	-- TODO as of 1.5.5 almost everything is allowed in Codea's sandbox
-	-- only things removed are arg, os.execute and os.exit
-	-- so: load,loadstring,dofile, require, packages etc are all there!
-	-- FIXME dofile(file) breaks the sandbox. if necessary (is it ever used?) find a way to wrap it
-	-- FIXME look into require()
-	--	}, {__index=_G})
+		-- TODO as of 1.5.5 almost everything is allowed in Codea's sandbox
+		-- only things removed are arg, os.execute and os.exit
+		-- so: load,loadstring,dofile, require, packages etc are all there!
+		-- FIXME dofile(file) breaks the sandbox. if necessary (is it ever used?) find a way to wrap it
+		-- FIXME look into require()
+		parameter = setmetatable({},{
+			--- see below
+			__index = function(tbl,key)
+				if key=='clear' then return function()
+					xCodea._escape_sandbox = {}
+					_G.parameter.clear()
+				end
+				else return function(name,...)
+					xCodea._escape_sandbox[name] = true
+					return _G.parameter[key](name,...)
+				end
+				end
+			end
+		})
 	}, {__index=function(tbl,key)
 		if key~='draw' and key~='touched' and key~='keyboard'
 			and key~='orientationChanged' and key~='collide' then
 			return _G[key]
 		else return nil end
 	end})
+
+	--- these are required for parameter.*
+	-- they only talk to _G, so relevant globals are 'inverse referenced' to the sandbox from _G
+	-- FIXME parameter.text does not work for mysterious reasons after an xCodea.restart()
+	-- I suspect caching of some sort runtime-side (probably they store the pointer, which is lost at restart)
+	-- (parameter.color works though? Wouldn't that also be a pointer to userdata?)
+	xCodea._escape_sandbox = {}
+	setmetatable(_G,{
+		__index = function(tbl,key)
+			if xCodea._escape_sandbox[key] then tbl = xCodea._SANDBOX end
+			return rawget(tbl,key)
+		end,
+		__newindex = function(tbl,key,val)
+			if xCodea._escape_sandbox[key] then tbl = xCodea._SANDBOX end
+			rawset(tbl,key,val)
+		end
+	})
+
+	--- setup
 	xc.polling_interval = 1
 	xc.remote_logging = true
 	xc.remote_watches = false
@@ -761,7 +793,6 @@ xCodea.restart = function()
 		xc._tween_update = tween.update
 		tween.update = function() end
 	end
-	-- tween.resetAll()
 	xc.try_connect()
 end
 
