@@ -55,7 +55,7 @@ In case of changes from both sides _on the same file_, the iPad version wins by 
 
 - In special circumstances (such as having two iPads, or calamitous corruption on your computer) you can manually force the sync direction with the `--push` and `--pull` options on the server [ **TODO** not yet implemented in the GUI]
 
-You can disconnect (stop xCodea, quit Codea altogether, put the iPad to sleep, take the iPad on a long trip) whenever you want; the next time xCodea connects it'll sync any intervening changes and restart the project. There's no need to ever stop and restart the server unless you want to work on a different project (to stop the server, press ctrl-C in its terminal window).
+You can disconnect (stop xCodea, quit Codea altogether, put the iPad to sleep, take the iPad on a long trip) whenever you want; the next time xCodea connects it'll sync any intervening changes and restart the project. There's no need to ever stop and restart the server unless you want to work on a different project (to stop the command line server, press ctrl-C in its terminal window).
 
 ### Live coding
 
@@ -64,25 +64,42 @@ Whenever a project file is changed on disk (i.e. on save) its contents are sent 
 - If the file is not a valid lua chunk (meaning, there's a syntax error) you'll immediately see an error (with filename and line number).
 - Otherwise the file will be evaluated inside xCodea's sandbox, updating your functions etc., and letting you see the effects of the changes almost immediately.
 - Whenever a runtime error happens you'll see the stack trace (with filename and line number of the offending code).
-	- If the error happens outside of the draw() event, your project will keep drawing in the background.
+	- If the error happens outside of the draw() event (see below for useful tips), your project will keep drawing in the background.
 - Errors are displayed both on your iPad and in the server log.
 
 Moreover the server watches for a special `eval.luac` file in your projectsRoot folder. As soon as this file is created, the server sends its contents to be evaluated inside xCodea's sandbox, then deletes the file. 
 
 - You can use this as a live REPL to control and alter your project at runtime.
 - You can send `xCodea.restart()` to safely reset the sandbox and restart the project execution
+
 Finally, if you're using [LDT](http://www.eclipse.org/koneki/ldt/) (or some other Eclipse-based IDE) xCodea monitors the `.buildpath` file for your project to detect dependency changes (when a change occurs the project is automatically restarted).
 
-### Tips
+### Taking advantage of xCodea
 
-- Set up keyboard shortcuts to take advantage of `eval.luac`. For example I use [BetterTouchTool](http://www.boastr.net/) to intercept some key combinations while in LDT:
+- When defining new classes or containers, use the idiom `myClass = myClass or class()` or `myObj = myObj or {}`. If you use `myClass = class()` myClass will be recreated every time the file is evaluated (which is every time the file is saved), destroying its state. Similarly, you should avoid initialising variables in the main chunk of a file - use setup functions (called in turn by the main `setup()`)
+- During execution of a Codea project there is normally a single entry point for your code - the `draw()` function. **xCodea gives you another entry point:** `update()`. Take advantage of it to separate program-state updates and actual drawing; this improves a lot feedback during live coding as runtime errors in `update()` won't affect drawing.
+	- In order to take advantage of this, you must have a global `function update() ... end` somewhere in your project (usually in your Main.lua), and you _must call `update()` as the first statement_ inside your `draw()` (or any other function in your draw call chain - xCodea should be able to hunt it down and set the hook). Simple example:
+	
+	```
+	function update()
+	    -- update the program state here
+	    ...
+	end
+	
+	function draw()
+	    update()
+	    -- do your drawing here
+	    ...
+	end
+	```
+	- As an aside, a similar technique is used to separate Codea's `tween.update` from your draw loop - e.g. runtime errors in callbacks from `tween(..., callback,args)` won't affect the draw loop (but the callback will be terminated)
+- [LDT](http://www.eclipse.org/koneki/ldt/) is a powerful Eclipse-based IDE for Lua projects (if a bit rough on the edges, but it's possible with some effort to make it behave). I prepared an execution environment [(explanation)](https://wiki.eclipse.org/Koneki/LDT/Developer_Area/User_Guides/User_Guide_1.1#Execution_Environment) that will get you code assist and in-place documentation for the Codea API; if you use LDT [get it here](https://github.com/lowne/xCodea/releases/download/v0.1.0/Codea-LDT.zip) 
+- Set up keyboard shortcuts to take advantage of `eval.luac` for a REPL-like experience. For example I use [BetterTouchTool](http://www.boastr.net/) to intercept some key combinations while in LDT:
 	- ⌘⏎: sends ⌘C, then executes `pbpaste > path/to/projectsRoot/eval.luac` (eval the current selection)
 	- ⌘⌥⏎: executes `echo "xCodea.restart()" > path/to/projectsRoot/eval.luac` (restart the project)
 	- ⌘\\: navigates to the file and linenumber of the last error - xCodea allows this via non-default pasteboards but the macro is a bit more complex
 - If you want to see the value of a variable or expression you can send it "naked" to `eval.luac`, xCodea will do the required `print()` wrapping (and sending to the server log) for you.
-- When defining new classes or containers, use the idiom `myClass = myClass or class()` or `myObj = myObj or {}`. If you use `myClass = class()` myClass will be recreated every time the file is evaluated (which is every time the file is saved), destroying its state. Similarly, you should avoid initialising variables in the main chunk of a file - use setup functions (called in turn by the main `setup()`)
-- [ **TODO** LDT, with link to Codea execution environment]
-- [ **TODO** if the update() hook gets implemented, explain it here]
+	
 
 ### Acknowledgements
 
