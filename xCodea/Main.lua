@@ -170,7 +170,7 @@ function xc.eval(code,name,log)
 		xc.vlog('error in loadstring()')
 		return xc.sandbox_error(error,false)
 	end
-	setfenv(success,xCodea._SANDBOX)
+	if code:match "^%s*(.-)%s*$"~='xCodea.restart()' then setfenv(success,xCodea._SANDBOX) end
 	local results = {xpcall(success, xc.error_handler)}
 	success = results[1]
 	--setfenv(1,_G) -- FIXME test??
@@ -386,7 +386,7 @@ function xc.connected(data,status,headers)
 	table.insert(xc.projects,xc.project)
 
 	local remotefiles = {}
-	for file,chk in string.gmatch(headers['checksums'] or '','(.-:.-):(.-):') do
+	for file,chk in string.gmatch(headers['source'] or '','(.-:.-):(.-):') do
 		remotefiles[file] = chk
 	end
 
@@ -455,7 +455,7 @@ function xc.connected(data,status,headers)
 			send_files(file)
 		end
 		http.request(xCodea_server..'/file', success, xc.connection_error,
-			{method = 'POST', headers={project=xc.project,file=file},data = data})
+			{method = 'POST', headers={project=xc.project,file=file,ftype='source'},data = data})
 	end
 
 	local function send_deletions(i)
@@ -472,7 +472,7 @@ function xc.connected(data,status,headers)
 		end
 		xc.xlog('Deleting remote file '..file)
 		http.request(xCodea_server..'/delete', success, xc.connection_error,
-			{method = 'POST', headers={project=xc.project,file=file}})
+			{method = 'POST', headers={project=xc.project,file=file,ftype='source'}})
 	end
 	local function send_dependencies()
 		if localdeps == (headers['dependencies'] or '') then
@@ -536,6 +536,38 @@ function xc.poll()
 			return http.request(xCodea_server..'/dependencies_saved',dep_success,xc.connection_error,
 				{method = 'POST', headers = {project=xc.project,dependencies=table.concat(remotedeps,':')}})
 		end
+
+		local file = headers['file']
+		local delete = headers['delete']
+		if file or delete then
+			local chk = headers['chk']
+			local path = file or delete
+			local proj,name = path:match('(.-):(.+)')
+			local ftype=headers['type']
+			xc.xlog('Received '..(file and 'updated' or 'deleted')..' file: '..(file or delete)..' ('..ftype..')')
+			if ftype=='source' then
+				saveProjectTab(path, file and data or nil)
+				if file then chk = xc.adler32(readProjectTab(path)) end
+				if proj==xc.project or name~='Main' then
+					xc.error = nil
+					if file then table.insert(xc.to_sandbox,path) end
+				end
+			elseif ftype=='image' then
+				local key = 'Documents:'..proj..'.codea/'..name
+				saveImage(key,file and data or nil)
+				xCodea._SANDBOX._inv_img_cache = readImage(key) -- will you pleeease invalidate the cache?
+				--				if file then chk = xc.adler32(readImage(key).data,headers['Content-Length'] or 0) end
+			elseif ftype=='sound' then
+
+			end
+			local function file_success(data,status,headers)
+				if status~=200 then xc.log_error('Received status '..status) return end
+				return xc.poll()
+			end
+			return http.request(xCodea_server..'/file_'..(file and 'saved' or 'deleted'),file_success,xc.connection_error,
+				{method = 'POST', headers = {project=xc.project,file=path,type=ftype,chk=chk}})
+		end
+
 		local eval = headers['eval']
 		if eval then
 			xc.error = nil
@@ -547,43 +579,17 @@ function xc.poll()
 			xc.register_callback(xc.polling_interval,xc.poll)
 			return xc.eval(data,name,true)
 		end
-		local file = headers['file']
-		local delete = headers['delete']
-		if file or delete then
-			local proj,name=(file or delete):match('(.-):(.+)')
-			xc.xlog('Received '..(file and 'updated' or 'deleted')..' file: '..proj..':'..name)
-			local i=xc.InfoPlist(proj)
-			if not i:exists() then
-				xc.fatal_error('Project "'..proj..'" does not exist in Codea!\n'..
-					'xCodea cannot create new projects in Codea, so you must do it manually.\n'..
-					'You can then reconnect to the xCodea server.')
-				return
-			end
-			saveProjectTab(file or delete,file and data or nil)
 
-			if proj==xc.project or name~='Main' then
-				xc.error = nil
-				if file then
-					table.insert(xc.to_sandbox,file)
-				end
-			end
-			local function file_success(data,status,headers)
-				if status~=200 then xc.log_error('Received status '..status) return end
-				return xc.poll()
-			end
-			return http.request(xCodea_server..'/file_'..(file and 'saved' or 'deleted'),file_success,xc.connection_error,
-				{method = 'POST', headers = {project=xc.project,file=file or delete,chk=xc.adler32(file and data or '')}})
-		end
 		return xc.log_error('Invalid data received from poll!')
 	end
 	http.request(xCodea_server..'/poll',success,xc.connection_error,
 		{headers = {project=xc.project}})
 end
 
-function xc.adler32(data)
+function xc.adler32(data,len)
 	local a = 1
 	local b = 0
-	for i=1, #data do
+	for i=1, (len or #data) do
 		a = (a + data:byte(i)) % 65521
 		b = (b + a) % 65521
 	end
@@ -793,6 +799,7 @@ xCodea.restart = function()
 		xc._tween_update = tween.update
 		tween.update = function() end
 	end
+	xCodea._SANDBOX.parameter.clear()
 	xc.try_connect()
 end
 

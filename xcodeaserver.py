@@ -3,8 +3,10 @@
 ''' xCodea server
 
 
-Usage: 
+Usage:
   xcodeaserver.py <projDir> [--root=<projectsRoot>] [--src=<srcSubDir>]
+  							[--images=<imgSubDir>] [--shaders=<shdSubDir]
+  							[--sounds=<sndSubDir>] [--music=<musSubDir>]
                             [--color] [--notify] [--sound] [--logging]
                             [--polling=<interval>] [--verbose]
                             [--long-polling]
@@ -15,8 +17,12 @@ Usage:
 
 Options:
   --root=<projectsRoot>     Directory containing your projects [default: .]
-  --src=<srcSubDir>         Location of .lua files in the project directory
+  --src=<srcSubDir>         Location of .lua files relative to the project directory
                             (e.g. use --src=src for Eclipse/LDT) [default: .]
+  --images=<imgSubDir>      Location of image files (.png/.jpg/.gif) [default: .]
+  --shaders=<shdSubDir>     Location of shader files (not implemented) [default: .]
+  --sounds=<sndSubDir>      Location of sound files (not implemented) [default: .]
+  --music=<musSubDir>       Location of music files (not implemented) [default: .]
   -s --sound                Use afplay for feedback (sounds)
   -n --notify               Use terminal-notifier for feedback on errors
   -c --color                Colorize output
@@ -32,19 +38,6 @@ Options:
 
   -h --help                 Show this screen
 '''
-
-#not implemented yet
-'''
-  -o --overwrite            CAUTION - Overwrite the project in Codea with all
-                            local changes since last connected (default is the
-                            other way around - sync back any changes that were
-                            made on your device); this is only useful if you
-                            have more than one device
-
-  -w --watches              Capture all parameter.watch from Codea to ./.watches
-
-'''
-
 
 import xcodeaserver_dev as x
 
@@ -114,7 +107,8 @@ def start_server():
 	x.verbose = args['--verbose']
 	#x.overwrite = args['--overwrite']
 	x.projectsRoot = args['--root']
-	x.srcdir = args['--src']
+	x.file_dirs = {'source':args['--src'],'image':args['--images'],'sound':args['--sounds'],
+					'music':args['--music'],'shader':args['--shaders']}
 	x.pull = args['--pull']
 	x.push = args['--push']
 	x.cachefile = normpath(join(x.projectsRoot,'.xcodea.cache'))
