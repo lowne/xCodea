@@ -17,7 +17,7 @@ except IOError as e:
 def flush_prefs():
 	with app.open(prefsfile,'w') as f:
 		json.dump(prefs,f)
-	
+
 def click_startAtLaunch(sender):
 	sender.state = not sender.state
 	prefs['startAtLaunch'] = sender.state
@@ -47,14 +47,16 @@ def get_ip():
 	return ip
 
 def click_serverIpPort(sender):
-	win = rumps.Window('computer\'s IP address:port number','Server address')
-	win.default_text = prefs['ip_addr']
+	win = rumps.Window('computer\'s IP address:port number','Server address',
+		default_text=prefs['ip_addr'],cancel=True,dimensions=(320,20))
 	response = win.run()
-	if response.text != prefs['ip_addr']:
-		win = rumps.Window('Open Safari on the iPad, go to http://'+response.text
-			+'\nthen select all the code and copy it. Open Codea, long-press Add New Project, tap Paste new project, call it xCodea.',
-			'Server address updated')
-		win.run()
+	print(response.clicked)
+	if response.clicked==1 and response.text != prefs['ip_addr']:
+		rumps.alert('Server address updated',
+			'Open Safari on the iPad, go to http://'+response.text
+			+'\nthen select all the code and copy it.\n'
+			+'Open Codea, long-press Add New Project, tap Paste new project, call it xCodea.'
+			)
 		sender.title = 'Server address: '+response.text
 	#print(response.text)
 
@@ -70,21 +72,17 @@ def set_projectsRoot(folder):
 	folder_valid = False
 	got_warning = False
 	while not folder_valid:
-		win = rumps.Window('','Projects folder')
-		win.default_text = folder
-		win.add_button('Cancel')
+		win = rumps.Window('','Projects folder',cancel=True,
+			default_text=folder,dimensions=(320,20))
 		if got_warning: win.add_button('Proceed anyway')
 		response = win.run()
 		folder = response.text
-		if response.clicked == 2:
-			return False
-		#print(os.path.abspath(folder))
+		if response.clicked == 0: return False
 		exists = os.path.isdir(os.path.abspath(folder))
 		if not exists:
 			rumps.alert('Error','The specified folder does not exist!')
 		else:
-			if len(os.listdir(folder))==0 or response.clicked==3:
-				folder_valid = True
+			if len(os.listdir(folder))==0 or response.clicked==2: folder_valid = True
 			else:
 				rumps.alert('Warning','The specified fodler is not empty!')
 				got_warning = True
@@ -123,15 +121,15 @@ def scan_projects(sender):
 	projects = []
 	if len(app.menu['Project'])>0:
 		app.menu['Project'].clear()
+	app.menu['Project'].add(rumps.MenuItem('New project...',callback=new_project))
+	app.menu['Project'].add(rumps.MenuItem('Rescan',callback=scan_projects))
+	app.menu['Project'].add(rumps.separator)
 	cachefile = os.path.join(prefs['projectsRoot'],'.xcodea.cache')
 	if os.path.isfile(cachefile):
 		cache = json.load(open(cachefile))
 		projects = cache.keys()
 	for proj in projects:
 		app.menu['Project'].add(rumps.MenuItem(proj,callback=click_project))
-	app.menu['Project'].add(rumps.separator)
-	app.menu['Project'].add(rumps.MenuItem('Rescan',callback=scan_projects))
-	app.menu['Project'].add(rumps.MenuItem('New project...',callback=new_project))
 
 def click_project(sender):
 	set_project(sender.title)
@@ -144,15 +142,15 @@ def set_project(proj):
 		rumps.alert('Project changed','Please restart the server')
 		if menu_server.state:
 			click_server(menu_server)
+
 def new_project(sender):
 	project_valid = False
 	while not project_valid:
-		win = rumps.Window('The project must already exist in Codea','New project')
-		win.add_button('Cancel')
+		win = rumps.Window('The project must already exist in Codea','New project',
+			cancel=True,dimensions=(320,20))
 		response = win.run()
-		if response.clicked==2: return
 		proj = response.text
-		if len(proj)>0:
+		if response.clicked==1 and len(proj)>0:
 			set_project(proj)
 			project_valid = True
 
@@ -170,17 +168,23 @@ def start_server():
 		rumps.alert('','Server already started!')
 		#return
 	xcs.args = {
-		'--root':prefs['projectsRoot'], 
-		'<projDir>': prefs['project'], 
+		'--root':prefs['projectsRoot'],
+		'<projDir>': prefs['project'],
 		'--notify':prefs.get('notify'),
 		'--sound':prefs.get('sound'),
 		'--color':True,
 		'--polling':1,
 		'--logging':prefs.get('logging'),
 		'--verbose':prefs.get('verbose'),
-		'--src':'.',
+#		'--src':'.',
+		'--src':prefs.get('sources_dir'),
+		'--images':prefs.get('images_dir'),
+		'--shaders':prefs.get('shaders_dir'),
+		'--sounds':prefs.get('sounds_dir'),
+		'--music':prefs.get('music_dir'),
 		'--pull':False,
 		'--push':False,
+		'--long-polling':True,
 		'gui_app':True,
 	}
 	thread.start_new_thread(xcs.start_server,())
@@ -193,12 +197,69 @@ def show_log(sender):
 #	thread.start_new_thread(xlog.show_log,())
 	webbrowser.open(prefs['ip_addr']+'/server_log')
 
+def input_ftype_dir(what):
+	win = rumps.Window('Location of your '+what+' inside the project directory',what.capitalize(),
+		cancel=True,default_text=prefs[what+'_dir'],dimensions=(320,20))
+	response = win.run()
+	if response.clicked==0: return prefs[what+'_dir']
+	dir = response.text
+	if len(dir)==0: return '.'
+	return dir
+
+def click_sources(sender):
+	set_ftype_dir('sources',input_ftype_dir('sources'),sender)
+def click_images(sender):
+	set_ftype_dir('images',input_ftype_dir('images'),sender)
+def click_shaders(sender):
+	set_ftype_dir('shaders',input_ftype_dir('shaders'),sender)
+def click_sounds(sender):
+	set_ftype_dir('sounds',input_ftype_dir('sounds'),sender)
+def click_music(sender):
+	set_ftype_dir('music',input_ftype_dir('music'),sender)
+
+def set_ftype_dir(pref,dir,sender):
+	prefs[pref+'_dir'] = dir
+	flush_prefs()
+	sender.title = pref.capitalize()+': '+dir
+
+def get_eval_luac():
+	if not prefs.get('projectsRoot'): return
+	return os.path.join(prefs['projectsRoot'],'eval.luac')
+
+def click_eval(sender):
+	if not xcs.is_running: return
+	last_eval = prefs.get('last_eval') or ''
+	win = rumps.Window('Lua chunk to execute (ctrl-return for new line):','Eval',
+		cancel=True,default_text=last_eval,dimensions=(320,320))
+	response = win.run()
+	if response.clicked==2: return
+	res = response.text.replace(u'\u2028','\n').replace(u'\u2029','\n')
+	prefs['last_eval'] = res
+	flush_prefs()
+	file = open(get_eval_luac(),'w')
+	file.write(res)
+	file.close()
+
+
+def click_eval_clipboard(sender):
+	if not xcs.is_running: return
+	os.system('pbpaste > "'+get_eval_luac()+'"')
+
+def click_restart_project(sender):
+	if not xcs.is_running: return
+	os.system('echo "xCodea.restart()" > "'+get_eval_luac()+'"')
+
 
 #app.menu.get('Project: '+(project or '<NONE>')).
 app.menu = [
-	rumps.MenuItem('Show log',callback=show_log),
-	rumps.MenuItem('Project',callback=scan_projects), 
+	rumps.MenuItem('Eval...',callback=click_eval),
+	rumps.MenuItem('Eval clipboard',callback=click_eval_clipboard),
+	rumps.separator,
+	rumps.MenuItem('Restart project',callback=click_restart_project),
+	rumps.separator,
 	rumps.MenuItem('Server',callback=click_server),
+	rumps.MenuItem('Show log',callback=show_log),
+	rumps.MenuItem('Project',callback=scan_projects),
 	rumps.separator,
 	{'Preferences':[
 		rumps.MenuItem('Server address: '+prefs['ip_addr'],callback=click_serverIpPort,),
@@ -209,20 +270,53 @@ app.menu = [
 		rumps.MenuItem('Show errors in notification center',callback=click_notify),
 		rumps.MenuItem('Emit sound on client events',callback=click_sound),
 		rumps.MenuItem('Verbose logging',callback=click_verbose),
-	]}, 
+		rumps.separator,
+		{'Project structure':[
+			rumps.MenuItem('sources',callback=click_sources),
+			rumps.MenuItem('images',callback=click_images),
+			rumps.MenuItem('shaders',callback=click_shaders),
+			rumps.MenuItem('sounds',callback=click_sounds),
+			rumps.MenuItem('music',callback=click_music),
+			],
+		}
+		]
+	},
 	rumps.separator,
 ]
 app.title='xC'
 scan_projects(None)
 app.menu['Project'].title = 'Project: '+(prefs.get('project') or '<NONE>')
-menu_server = app.menu['Server']
+
+
 toggles = app.menu['Preferences']
+# for p in ['startAtLaunch','logging','notify','sound','verbose']:
+# 	toggles[p].state = prefs.get(p) or False
 toggles['Start server at launch'].state = prefs.get('startAtLaunch') or False
 toggles['Log client print()s'].state = prefs.get('logging') or False
 toggles['Show errors in notification center'].state = prefs.get('notify') or False
 toggles['Emit sound on client events'].state = prefs.get('sound') or False
 toggles['Verbose logging'].state = prefs.get('verbose') or False
+
+subdirs = toggles['Project structure']
+for el in subdirs:
+	pref = el.title().lower()
+	set_ftype_dir(pref,prefs.get(pref) or '.',subdirs[el])
+
+menu_server = app.menu['Server']
 if prefs.get('startAtLaunch') and prefs.get('project'): click_server(menu_server)
 else: menu_server.title = 'Start server'
+
+
 app.run()
+
+
+
+
 #xlog.start()
+
+
+
+#for p in ['srcSubDir','imgSubDir','shdSubDir','sndSubDir','musSubDir']:
+#	if not prefs.get(p):
+#		prefs[p] = '.'
+#		flush_prefs()

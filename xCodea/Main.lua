@@ -170,7 +170,11 @@ function xc.eval(code,name,log)
 		xc.vlog('error in loadstring()')
 		return xc.sandbox_error(error,false)
 	end
-	if code:match "^%s*(.-)%s*$"~='xCodea.restart()' then setfenv(success,xCodea._SANDBOX) end
+	if code:match "^%s*(.-)%s*$"~='xCodea.restart()' then
+		setfenv(success,xCodea._SANDBOX)
+	else
+		is_repl = false
+	end
 	local results = {xpcall(success, xc.error_handler)}
 	success = results[1]
 	--setfenv(1,_G) -- FIXME test??
