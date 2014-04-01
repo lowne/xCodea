@@ -17,6 +17,7 @@ function xc.make_sandbox()
 		if xc.sandbox_started then return true end
 		return xc.start_sandbox()
 	end
+	--	xc.sandbox_started = nil
 	table.remove(xc.to_sandbox,1)
 	xc.vlog('Running eval for tab '..tab)
 	-- FIXME xCodea:Main below is never received (stack overflow!)
@@ -27,6 +28,7 @@ end
 
 
 function xc.start_sandbox()
+	xc.hijack_update()
 	xc.xlog('Running setup()')
 	local success = xpcall(xCodea._SANDBOX.setup,xc.error_handler)
 	if success then
@@ -37,7 +39,7 @@ function xc.start_sandbox()
 end
 
 function xc.hijack_update()
-	if xCodea._SANDBOX.update then
+	if xCodea._SANDBOX.update and not xc.has_update_hook then
 		if not xc.draw_original then xc.draw_original = xCodea._SANDBOX.draw end
 		local found = xc.find_update_hook(xc.draw_original)
 		if found then
@@ -59,16 +61,13 @@ function xc.find_update_hook(m)
 	--	local m = xCodea._SANDBOX.draw
 	local result = ''
 	repeat
-		print('Searching for',tostring(m)..'()')
+		--		print('Searching for',tostring(m)..'()')
 		local target = type(m)=='function' and m or xCodea._SANDBOX[m]
-		if not target then
-			print("DRAMA!")
-			return
-		end
+		if not target then return end
 		local info = debug.getinfo(target)
-		if not info then print('NOT FOUND!')return end
+		if not info then return end
 		local tab =	info.source:sub(3,-1)
-		print('Found in',tab)
+		--		print('Found in',tab)
 		if tab=='[xCodea]' then return end
 		local source_tab = readProjectTab(tab)
 		local source_arr = xc.splitstring(source_tab,'\n')
@@ -78,16 +77,19 @@ function xc.find_update_hook(m)
 		-- it can be: draw = function() XXXXX()
 		-- or         function draw() XXXXXX()
 		m = chunk:match('..-=.-function%(%)(.-)%(%)') or chunk:match('function..-%(%)(.-)%(%)')
-		print('It calls',m)
+		--		print('It calls',m)
 		local upn = nil local upv = nil local i = 1
 		repeat
 			upn,upv = debug.getupvalue(target,i)
 			--			print(upn,upv)
 			i = i + 1
 		until upn == m or not upn
-		if upn then print(upn..' is an upvalue:',upv) m=upv end
+		if upn then
+			--			print(upn..' is an upvalue:',upv)
+			m = upv
+		end
 	until m == 'update' or not m
-	if not m then print('update() not found') return end
+	if not m then return end
 	return result:gsub('__NEWLINE_XC_','\n'):gsub('update%(%)','')
 		-- result is "function last_draw_in_chain() --update() is snipped .... end"
 end
@@ -138,6 +140,7 @@ function xc.run_sandbox()
 	xc.vlog('Sandbox (re)started')
 	return true
 end
+
 function xc.pretty_print(...)
 	local n = select('#',...)
 	if n==0 then return 'nil' end
@@ -156,6 +159,7 @@ function xc.pretty_print(...)
 	end
 	return table.concat(resp,', ')
 end
+
 function xc.eval(code,name,log)
 	xc.vlog('Eval: '..name)
 	--	if code=='restart()' then loadstring(code)() end
@@ -205,7 +209,7 @@ function xc.sandbox_error(err,is_runtime)
 		else
 			background(40)
 		end
-		resetStyle() resetMatrix()
+		--		resetStyle() resetMatrix()
 		xc.draw_status()
 	end
 end
@@ -235,7 +239,10 @@ end
 
 
 function xc.draw_status()
-	pushStyle()
+	resetStyle()
+	ortho()
+	resetMatrix()
+	--	pushStyle()
 	noStroke()
 	if xc.error then fill(255,0,0,60) rect(0,0,WIDTH,HEIGHT) end
 	textMode(CORNER)
@@ -264,7 +271,7 @@ function xc.draw_status()
 	fill(200,240,255)
 	fontSize(80)
 	text('xCodea',WIDTH/2,HEIGHT-40)
-	popStyle()
+	--	popStyle()
 end
 
 function xc.null() end
@@ -507,8 +514,7 @@ function xc.poll()
 			if not xc.error then
 				xc.make_sandbox()
 			end
-			--			tween.stop(xc.tween)
-			--			xc.tween = tween.delay(xc.polling_interval,xc.poll)
+
 			xc.register_callback(xc.polling_interval,xc.poll)
 			return
 		end
@@ -553,6 +559,7 @@ function xc.poll()
 				saveProjectTab(path, file and data or nil)
 				if file then chk = xc.adler32(readProjectTab(path)) end
 				if proj==xc.project or name~='Main' then
+					xc.has_update_hook = nil
 					xc.error = nil
 					if file then table.insert(xc.to_sandbox,path) end
 				end

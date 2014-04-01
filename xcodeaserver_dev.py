@@ -68,13 +68,16 @@ def error(data):
 		shell('afplay','/System/Library/Sounds/Sosumi.aiff')
 
 def rerror(data):
+	pasted = False
 	for match in re.finditer('\[string "::(.+?)"\]:(.+?):',data):
 		snippet = match.group(1)
 		proj,file = snippet.split(':')
-		filename = path.normpath(path.join(projectsRoot,proj,srcdir,file+'.lua'))
-		filename = path.normpath(path.join(proj,srcdir,file+'.lua'))
-		os.system('echo "%s"|pbcopy -pboard find' % filename)
-		os.system('echo "%s"|pbcopy -pboard font' % match.group(2))
+		#filename = path.normpath(path.join(projectsRoot,proj,file_dirs['source'],file+'.lua'))
+		filename = path.normpath(path.join(proj,file_dirs['source'],file+'.lua'))
+		if not pasted:
+			os.system('echo "%s"|pbcopy -pboard find' % filename)
+			os.system('echo "%s"|pbcopy -pboard font' % match.group(2))
+			pasted = True
 		#filename = path.normpath(path.join(file+'.lua'))
 		data = data.replace(match.group(0),'('+filename+':'+match.group(2)+')')
 		#data = '('+filename+':'+match.group(2)+')'+data.replace(match.group(0),'')
@@ -353,6 +356,7 @@ def	do_poll(httpd):
 		if bp is not None:
 			deps = sorted([e.get('path')[1:] for e in bp if e.get('kind')=='prj'])
 			if deps!=cache[project]['dependencies']:
+				# print(deps,cache[project]['dependencies'])
 				log('Dependencies changed in .buildpath, sending updated: '+', '.join(deps))
 				httpd.send_response(200)
 				httpd.send_header('project',project)
@@ -446,7 +450,9 @@ def do_dependencies_saved(httpd):
 		httpd.send_response(500)
 		httpd.end_headers()
 		return
-	deps = sorted(httpd.headers.getheader('dependencies').split(':'))
+	hdeps = httpd.headers.getheader('dependencies')
+	deps = sorted(hdeps.split(':'))
+	if hdeps == '': deps = []
 	cache[project]['dependencies']=deps
 	flush_cache()
 	log('Dependencies updated successfully: '+', '.join(deps))
