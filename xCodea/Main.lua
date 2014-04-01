@@ -459,7 +459,7 @@ function xc.connected(data,status,headers)
 			send_files(file)
 		end
 		http.request(xCodea_server..'/file', success, xc.connection_error,
-			{method = 'POST', headers={project=xc.project,file=file,ftype='source'},data = data})
+			{method = 'POST', headers={project=xc.project,file=file,type='source'},data = data})
 	end
 
 	local function send_deletions(i)
@@ -476,7 +476,7 @@ function xc.connected(data,status,headers)
 		end
 		xc.xlog('Deleting remote file '..file)
 		http.request(xCodea_server..'/delete', success, xc.connection_error,
-			{method = 'POST', headers={project=xc.project,file=file,ftype='source'}})
+			{method = 'POST', headers={project=xc.project,file=file,type='source'}})
 	end
 	local function send_dependencies()
 		if localdeps == (headers['dependencies'] or '') then

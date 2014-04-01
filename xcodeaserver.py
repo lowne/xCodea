@@ -5,8 +5,8 @@
 
 Usage:
   xcodeaserver.py <projDir> [--root=<projectsRoot>] [--src=<srcSubDir>]
-  							[--images=<imgSubDir>] [--shaders=<shdSubDir]
-  							[--sounds=<sndSubDir>] [--music=<musSubDir>]
+                            [--images=<imgSubDir>] [--shaders=<shdSubDir]
+                            [--sounds=<sndSubDir>] [--music=<musSubDir>]
                             [--color] [--notify] [--sound] [--logging]
                             [--polling=<interval>] [--verbose]
                             [--long-polling]
