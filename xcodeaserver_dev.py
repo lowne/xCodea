@@ -16,11 +16,25 @@ GREEN='32'
 BLUE='34'
 NORMAL=''
 html_color={'31':'#F44','32':'#AFA','34':'#AAF','':'#EEE'}
+file_types = {'source':{
+				'exts':['.lua'],
+				'open':'r',
+				'content-type':['text/plain'],
+			},'image':{
+				'exts':['.png','.gif','.jpg','.pdf'],
+				'open':'rb',
+				'content-type':['image/png','image/gif','image/jpg','application/pdf'],
+			},'sound':{
+				'exts':['.wav','.caf','.mp3'],
+				'open':'rb',
+				'content-type':['audio/wav','audio/x-caf','audio/mpeg3'],
+				}
+			}
 
-def adler32(str):
+def adler32(data):
 	# TODO test with real unicode - probably broken
-	data = str.encode('utf-8')
-	data = bytearray(str)
+#	if isinstance(str,basestring): data = bytearray(str,'utf-8')
+	data = bytearray(data)
 	a = 1
 	b = 0
 	for i in range(len(data)):
@@ -54,13 +68,16 @@ def error(data):
 		shell('afplay','/System/Library/Sounds/Sosumi.aiff')
 
 def rerror(data):
+	pasted = False
 	for match in re.finditer('\[string "::(.+?)"\]:(.+?):',data):
 		snippet = match.group(1)
 		proj,file = snippet.split(':')
-		filename = path.normpath(path.join(projectsRoot,proj,srcdir,file+'.lua'))
-		filename = path.normpath(path.join(proj,srcdir,file+'.lua'))
-		os.system('echo "%s"|pbcopy -pboard find' % filename)
-		os.system('echo "%s"|pbcopy -pboard font' % match.group(2))
+		#filename = path.normpath(path.join(projectsRoot,proj,file_dirs['source'],file+'.lua'))
+		filename = path.normpath(path.join(proj,file_dirs['source'],file+'.lua'))
+		if not pasted:
+			os.system('echo "%s"|pbcopy -pboard find' % filename)
+			os.system('echo "%s"|pbcopy -pboard font' % match.group(2))
+			pasted = True
 		#filename = path.normpath(path.join(file+'.lua'))
 		data = data.replace(match.group(0),'('+filename+':'+match.group(2)+')')
 		#data = '('+filename+':'+match.group(2)+')'+data.replace(match.group(0),'')
@@ -79,11 +96,10 @@ def log(data):
 	colorprint(BLUE,'[server] '+data)
 	#elif notify:
 	#	os.system('terminal-notifier -title "xCodea server" -sound Pop -group xCodea.server -message "\\%s" > /dev/null'% (data))
-
 def clog(data):
 	colorprint(GREEN,data)
 	if sound:
-		shell('afplay','/System/Library/Sounds/Pop.aiff')
+		shell('afplay','-v','0.34','/System/Library/Sounds/Pop.aiff')
 	if notify:
 		shell('terminal-notifier','-remove','xCodea.error')
 	#if notify:
@@ -96,7 +112,7 @@ def get_ldtbuildpath(proj):
 	bppath = path.join(projectsRoot,proj,ldtbuildpath)
 	if not path.isfile(bppath): return None
 	bp=etree.parse(open(bppath))
-	if bp: 
+	if bp:
 		root = bp.getroot()
 		if root.tag=='buildpath':
 			return root
@@ -130,8 +146,10 @@ def do_GET(httpd):
 		httpd.end_headers()
 		httpd.wfile.write(data)
 	elif httpd.path=='/':
-		editpath = path.join(projectsRoot,'xCodea',srcdir,'EDIT_THIS.lua')
-		mainpath = path.join(projectsRoot,'xCodea',srcdir,'Main.lua')
+#		editpath = path.join(projectsRoot,'xCodea',srcdir,'EDIT_THIS.lua')
+#		mainpath = path.join(projectsRoot,'xCodea',srcdir,'Main.lua')
+		editpath = path.join(projectsRoot,'xCodea','EDIT_THIS.lua')
+		mainpath = path.join(projectsRoot,'xCodea','Main.lua')
 		if path.isfile(editpath) and path.isfile(mainpath):
 			httpd.send_response(200)
 			httpd.send_header('content-type','text/text')
@@ -221,15 +239,18 @@ def do_connect(httpd):
 	data=''
 	datalog=''
 	deps.append(project)
-	for proj in deps:
-		files = (cache.get(proj) or dict()).get('files') or dict()
-		for file,chk in files.items():
-			data = data + proj+':'+file+':' + chk + ':'
-			datalog = datalog + proj+':'+file+', '
-	if push:
+	for ftype in file_types.keys():
+		datalog = datalog + ftype +': '
 		for proj in deps:
-			if cache.get(proj): cache[proj]['files'] = dict()
-	if not pull: httpd.send_header('checksums',data); vlog('Sending known files: '+datalog)
+			files = (cache.get(proj) or dict()).get(ftype) or dict()
+			for file,chk in files.items():
+				data = data + proj+':'+file+':' + chk + ':'
+				datalog = datalog + proj+':'+file+', '
+		if push:
+			for proj in deps:
+				if cache.get(proj): cache[proj][ftype] = dict()
+		if not pull: httpd.send_header(ftype,data);
+	vlog('Sending known files: '+datalog)
 	httpd.end_headers()
 
 def do_set_dependencies(httpd):
@@ -262,13 +283,14 @@ def do_set_dependencies(httpd):
 def do_file(httpd,data):
 	proj = httpd.headers.getheader('project') or ''
 	tabname = httpd.headers.getheader('file') or ''
-	if proj!=project or tabname.find(':')<1:
+	ftype = httpd.headers.getheader('type')
+	if proj!=project or tabname.find(':')<1 or not ftype:
 		error('Invalid state in request!')
 		httpd.send_response(500)
 		return
 	log('Received file '+tabname)
 	proj, filename = tabname.split(':')
-	projpath = path.normpath(path.join(projectsRoot,proj,srcdir))
+	projpath = path.normpath(path.join(projectsRoot,proj,file_dirs[ftype]))
 	if not path.isdir(projpath):
 		os.mkdir(projpath)
 	filepath = path.join(projpath,filename+'.lua')
@@ -278,25 +300,26 @@ def do_file(httpd,data):
 	file.write(data)
 	file.close()
 	if not cache.get(proj):	cache[proj] = dict()
-	if not cache[proj].get('files'): cache[proj]['files'] = dict()
-	cache[proj]['files'][filename] = adler32(data)
+	if not cache[proj].get('source'): cache[proj]['source'] = dict()
+	cache[proj]['source'][filename] = adler32(data)
 	flush_cache()
 	log('Saved file '+ filepath)
 	httpd.send_response(200)
 	httpd.send_header('project',project)
-	
+
 def do_delete(httpd):
 	proj = httpd.headers.getheader('project') or ''
 	tabname = httpd.headers.getheader('file') or ''
-	if proj!=project or tabname.find(':')<1:
+	ftype = httpd.headers.getheader('type')
+	if proj!=project or tabname.find(':')<1 or not ftype:
 		error('Invalid state in request!')
 		httpd.send_response(500)
 		return
 	log('Received delete request for file '+tabname)
 	proj, filename = tabname.split(':')
-	((cache.get(proj) or dict()).get('files') or dict()).pop(filename,'')
+	((cache.get(proj) or dict()).get('source') or dict()).pop(filename,'')
 	flush_cache()
-	projpath = path.normpath(path.join(projectsRoot,proj,srcdir))
+	projpath = path.normpath(path.join(projectsRoot,proj,file_dirs[ftype]))
 	if not path.isdir(projpath):
 		error('Project directory %s does not exist!' % projpath)
 		httpd.send_response(200)
@@ -308,7 +331,6 @@ def do_delete(httpd):
 		return
 	os.remove(filepath)
 	log('File %s deleted' % filepath)
-
 
 def	do_poll(httpd):
 	if not gui_app:
@@ -334,6 +356,7 @@ def	do_poll(httpd):
 		if bp is not None:
 			deps = sorted([e.get('path')[1:] for e in bp if e.get('kind')=='prj'])
 			if deps!=cache[project]['dependencies']:
+				# print(deps,cache[project]['dependencies'])
 				log('Dependencies changed in .buildpath, sending updated: '+', '.join(deps))
 				httpd.send_response(200)
 				httpd.send_header('project',project)
@@ -343,52 +366,62 @@ def	do_poll(httpd):
 				return
 		deps=sorted(cache[project]['dependencies'])
 		deps.append(project)
-		known_files = set()
+
+
+		known_files = {ftype:set() for ftype in file_types.keys()}
+		#'sources':set(),'images':set(),'sounds':set()}
 		for proj in deps:
 			if not cache.get(proj): cache[proj]=dict()
-			if not cache[proj].get('files'): cache[proj]['files'] = dict()
-			for filename in cache[proj]['files'].keys():
-				known_files.add(proj+':'+filename)
-			projpath = path.normpath(path.join(projectsRoot,proj,srcdir))
-			for fullname in [f for f in listdir(projpath) if path.isfile(path.join(projpath,f)) and not f.startswith('.')]:
-				filepath = path.join(projpath,fullname)
-				filename, ext = path.splitext(fullname)
-				tabpath = proj+':'+filename
-				if ext=='.lua':
-					known_files.discard(tabpath)
-					file = open(filepath)
-					data = file.read()
-					file.close()
-					chk = adler32(data)
-					if chk != cache[proj]['files'].get(filename):
-						vlog('Sending updated file: '+tabpath)
-						httpd.send_response(200)
-						httpd.send_header('project',project)
-						httpd.send_header('file',tabpath)
-						httpd.send_header('content-length',len(data))
-						httpd.end_headers()
-						httpd.wfile.write(data)
-						#cache[proj]['files'][filename] = chk
-						#flush_cache()
-						return
-		for tabpath in known_files:
-			if tabpath.split(':')[1]!='Main': # cannot delete Main.lua!
-				vlog('Sending delete request for removed file: '+tabpath)
-				httpd.send_response(200)
-				httpd.send_header('project',project)
-				httpd.send_header('delete',tabpath)
-				httpd.end_headers()
-				return
+			for ftype in file_types.keys():
+				if not cache[proj].get(ftype): cache[proj][ftype] = dict()
+				for filename in cache[proj][ftype].keys():
+					known_files[ftype].add(proj+':'+filename)
+			for ftype,params in file_types.items():
+				projpath = path.normpath(path.join(projectsRoot,proj,file_dirs[ftype]))
+				for fullname in [f for f in listdir(projpath) if path.isfile(path.join(projpath,f)) and not f.startswith('.')]:
+					filepath = path.join(projpath,fullname)
+					filename, ext = path.splitext(fullname)
+					ext = ext.lower()
+					tabpath = proj+':'+filename
+					if ext in params['exts']:
+						file = open(filepath,params['open'])
+						data = file.read()
+						file.close()
+						known_files[ftype].discard(tabpath)
+						chk = adler32(data)
+						if chk != cache[proj][ftype].get(filename):
+							idx = params['exts'].index(ext)
+							ctype = params['content-type'][idx]
+							vlog('Sending updated file: '+tabpath+' ('+ftype+')')
+							httpd.send_response(200)
+							httpd.send_header('project',project)
+							httpd.send_header('content-type',ctype)
+							httpd.send_header('content-length',len(data))
+							httpd.send_header('type',ftype)
+							httpd.send_header('file',tabpath)
+							httpd.send_header('chk',chk) #can't do adler32 fo binaries in lua
+							httpd.end_headers()
+							httpd.wfile.write(data)
+							return
+		for ftype in file_types.keys():
+			for tabpath in known_files[ftype]:
+				proj,filename = tabpath.split(':')
+				if filename!='Main' or ftype!='source':
+					#filename, ext = path.splitext(fullname)
+					#for exts,pars in types.items():
+					#	if ext in exts:
+					vlog('Sending delete request for removed file: '+tabpath)
+					httpd.send_response(200)
+					httpd.send_header('project',project)
+					#httpd.send_header('content-length',0)
+					httpd.send_header('type',ftype)
+					httpd.send_header('delete',tabpath)
+					httpd.end_headers()
+					return
+
 		evalpath = path.normpath(path.join(projectsRoot,'eval.luac'))
 		global last_eval
 		if path.isfile(evalpath):
-#			with open(evalpath, 'a+') as f:
-#			   f.seek(0)
-#			   data = f.read()
-#			   f.seek(0)
-#			   f.truncate()
-#			   f.flush()
-#			   os.fsync(f.fileno())
    			file = open(evalpath)
 			data = file.read()
 			file.close()
@@ -417,7 +450,9 @@ def do_dependencies_saved(httpd):
 		httpd.send_response(500)
 		httpd.end_headers()
 		return
-	deps = sorted(httpd.headers.getheader('dependencies').split(':'))
+	hdeps = httpd.headers.getheader('dependencies')
+	deps = sorted(hdeps.split(':'))
+	if hdeps == '': deps = []
 	cache[project]['dependencies']=deps
 	flush_cache()
 	log('Dependencies updated successfully: '+', '.join(deps))
@@ -436,9 +471,10 @@ def do_file_saved(httpd):
 		httpd.end_headers()
 		return
 	tabname = httpd.headers.getheader('file')
-	proj, filename = tabname.split(':')
+	proj, fullname = tabname.split(':')
 	chk = httpd.headers.getheader('chk')
-	cache[proj]['files'][filename] = chk	
+	ftype = httpd.headers.getheader('type')
+	cache[proj][ftype][fullname] = chk
 	flush_cache()
 	log('File updated successfully: '+tabname)
 	httpd.send_response(200)
@@ -452,8 +488,9 @@ def do_file_deleted(httpd):
 		httpd.end_headers()
 		return
 	tabname = httpd.headers.getheader('file')
-	proj, filename = tabname.split(':')
-	cache[proj]['files'].pop(filename)
+	proj, fullname = tabname.split(':')
+	ftype = httpd.headers.getheader('type')
+	cache[proj][ftype].pop(fullname)
 	flush_cache()
 	log('File deleted successfully: '+tabname)
 	httpd.send_response(200)

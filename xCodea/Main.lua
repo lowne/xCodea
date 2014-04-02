@@ -17,6 +17,7 @@ function xc.make_sandbox()
 		if xc.sandbox_started then return true end
 		return xc.start_sandbox()
 	end
+	--	xc.sandbox_started = nil
 	table.remove(xc.to_sandbox,1)
 	xc.vlog('Running eval for tab '..tab)
 	-- FIXME xCodea:Main below is never received (stack overflow!)
@@ -27,6 +28,7 @@ end
 
 
 function xc.start_sandbox()
+	xc.hijack_update()
 	xc.xlog('Running setup()')
 	local success = xpcall(xCodea._SANDBOX.setup,xc.error_handler)
 	if success then
@@ -37,7 +39,7 @@ function xc.start_sandbox()
 end
 
 function xc.hijack_update()
-	if xCodea._SANDBOX.update then
+	if xCodea._SANDBOX.update and not xc.has_update_hook then
 		if not xc.draw_original then xc.draw_original = xCodea._SANDBOX.draw end
 		local found = xc.find_update_hook(xc.draw_original)
 		if found then
@@ -59,16 +61,13 @@ function xc.find_update_hook(m)
 	--	local m = xCodea._SANDBOX.draw
 	local result = ''
 	repeat
-		print('Searching for',tostring(m)..'()')
+		--		print('Searching for',tostring(m)..'()')
 		local target = type(m)=='function' and m or xCodea._SANDBOX[m]
-		if not target then
-			print("DRAMA!")
-			return
-		end
+		if not target then return end
 		local info = debug.getinfo(target)
-		if not info then print('NOT FOUND!')return end
+		if not info then return end
 		local tab =	info.source:sub(3,-1)
-		print('Found in',tab)
+		--		print('Found in',tab)
 		if tab=='[xCodea]' then return end
 		local source_tab = readProjectTab(tab)
 		local source_arr = xc.splitstring(source_tab,'\n')
@@ -78,16 +77,19 @@ function xc.find_update_hook(m)
 		-- it can be: draw = function() XXXXX()
 		-- or         function draw() XXXXXX()
 		m = chunk:match('..-=.-function%(%)(.-)%(%)') or chunk:match('function..-%(%)(.-)%(%)')
-		print('It calls',m)
+		--		print('It calls',m)
 		local upn = nil local upv = nil local i = 1
 		repeat
 			upn,upv = debug.getupvalue(target,i)
 			--			print(upn,upv)
 			i = i + 1
 		until upn == m or not upn
-		if upn then print(upn..' is an upvalue:',upv) m=upv end
+		if upn then
+			--			print(upn..' is an upvalue:',upv)
+			m = upv
+		end
 	until m == 'update' or not m
-	if not m then print('update() not found') return end
+	if not m then return end
 	return result:gsub('__NEWLINE_XC_','\n'):gsub('update%(%)','')
 		-- result is "function last_draw_in_chain() --update() is snipped .... end"
 end
@@ -138,6 +140,7 @@ function xc.run_sandbox()
 	xc.vlog('Sandbox (re)started')
 	return true
 end
+
 function xc.pretty_print(...)
 	local n = select('#',...)
 	if n==0 then return 'nil' end
@@ -156,6 +159,7 @@ function xc.pretty_print(...)
 	end
 	return table.concat(resp,', ')
 end
+
 function xc.eval(code,name,log)
 	xc.vlog('Eval: '..name)
 	--	if code=='restart()' then loadstring(code)() end
@@ -170,7 +174,11 @@ function xc.eval(code,name,log)
 		xc.vlog('error in loadstring()')
 		return xc.sandbox_error(error,false)
 	end
-	setfenv(success,xCodea._SANDBOX)
+	if code:match "^%s*(.-)%s*$"~='xCodea.restart()' then
+		setfenv(success,xCodea._SANDBOX)
+	else
+		is_repl = false
+	end
 	local results = {xpcall(success, xc.error_handler)}
 	success = results[1]
 	--setfenv(1,_G) -- FIXME test??
@@ -201,7 +209,7 @@ function xc.sandbox_error(err,is_runtime)
 		else
 			background(40)
 		end
-		resetStyle() resetMatrix()
+		--		resetStyle() resetMatrix()
 		xc.draw_status()
 	end
 end
@@ -231,7 +239,10 @@ end
 
 
 function xc.draw_status()
-	pushStyle()
+	resetStyle()
+	ortho()
+	resetMatrix()
+	--	pushStyle()
 	noStroke()
 	if xc.error then fill(255,0,0,60) rect(0,0,WIDTH,HEIGHT) end
 	textMode(CORNER)
@@ -260,7 +271,7 @@ function xc.draw_status()
 	fill(200,240,255)
 	fontSize(80)
 	text('xCodea',WIDTH/2,HEIGHT-40)
-	popStyle()
+	--	popStyle()
 end
 
 function xc.null() end
@@ -386,7 +397,7 @@ function xc.connected(data,status,headers)
 	table.insert(xc.projects,xc.project)
 
 	local remotefiles = {}
-	for file,chk in string.gmatch(headers['checksums'] or '','(.-:.-):(.-):') do
+	for file,chk in string.gmatch(headers['source'] or '','(.-:.-):(.-):') do
 		remotefiles[file] = chk
 	end
 
@@ -455,7 +466,7 @@ function xc.connected(data,status,headers)
 			send_files(file)
 		end
 		http.request(xCodea_server..'/file', success, xc.connection_error,
-			{method = 'POST', headers={project=xc.project,file=file},data = data})
+			{method = 'POST', headers={project=xc.project,file=file,type='source'},data = data})
 	end
 
 	local function send_deletions(i)
@@ -472,7 +483,7 @@ function xc.connected(data,status,headers)
 		end
 		xc.xlog('Deleting remote file '..file)
 		http.request(xCodea_server..'/delete', success, xc.connection_error,
-			{method = 'POST', headers={project=xc.project,file=file}})
+			{method = 'POST', headers={project=xc.project,file=file,type='source'}})
 	end
 	local function send_dependencies()
 		if localdeps == (headers['dependencies'] or '') then
@@ -503,8 +514,7 @@ function xc.poll()
 			if not xc.error then
 				xc.make_sandbox()
 			end
-			--			tween.stop(xc.tween)
-			--			xc.tween = tween.delay(xc.polling_interval,xc.poll)
+
 			xc.register_callback(xc.polling_interval,xc.poll)
 			return
 		end
@@ -536,6 +546,39 @@ function xc.poll()
 			return http.request(xCodea_server..'/dependencies_saved',dep_success,xc.connection_error,
 				{method = 'POST', headers = {project=xc.project,dependencies=table.concat(remotedeps,':')}})
 		end
+
+		local file = headers['file']
+		local delete = headers['delete']
+		if file or delete then
+			local chk = headers['chk']
+			local path = file or delete
+			local proj,name = path:match('(.-):(.+)')
+			local ftype=headers['type']
+			xc.xlog('Received '..(file and 'updated' or 'deleted')..' file: '..(file or delete)..' ('..ftype..')')
+			if ftype=='source' then
+				saveProjectTab(path, file and data or nil)
+				if file then chk = xc.adler32(readProjectTab(path)) end
+				if proj==xc.project or name~='Main' then
+					xc.has_update_hook = nil
+					xc.error = nil
+					if file then table.insert(xc.to_sandbox,path) end
+				end
+			elseif ftype=='image' then
+				local key = 'Documents:'..proj..'.codea/'..name
+				saveImage(key,file and data or nil)
+				xCodea._SANDBOX._inv_img_cache = readImage(key) -- will you pleeease invalidate the cache?
+				--				if file then chk = xc.adler32(readImage(key).data,headers['Content-Length'] or 0) end
+			elseif ftype=='sound' then
+
+			end
+			local function file_success(data,status,headers)
+				if status~=200 then xc.log_error('Received status '..status) return end
+				return xc.poll()
+			end
+			return http.request(xCodea_server..'/file_'..(file and 'saved' or 'deleted'),file_success,xc.connection_error,
+				{method = 'POST', headers = {project=xc.project,file=path,type=ftype,chk=chk}})
+		end
+
 		local eval = headers['eval']
 		if eval then
 			xc.error = nil
@@ -547,43 +590,17 @@ function xc.poll()
 			xc.register_callback(xc.polling_interval,xc.poll)
 			return xc.eval(data,name,true)
 		end
-		local file = headers['file']
-		local delete = headers['delete']
-		if file or delete then
-			local proj,name=(file or delete):match('(.-):(.+)')
-			xc.xlog('Received '..(file and 'updated' or 'deleted')..' file: '..proj..':'..name)
-			local i=xc.InfoPlist(proj)
-			if not i:exists() then
-				xc.fatal_error('Project "'..proj..'" does not exist in Codea!\n'..
-					'xCodea cannot create new projects in Codea, so you must do it manually.\n'..
-					'You can then reconnect to the xCodea server.')
-				return
-			end
-			saveProjectTab(file or delete,file and data or nil)
 
-			if proj==xc.project or name~='Main' then
-				xc.error = nil
-				if file then
-					table.insert(xc.to_sandbox,file)
-				end
-			end
-			local function file_success(data,status,headers)
-				if status~=200 then xc.log_error('Received status '..status) return end
-				return xc.poll()
-			end
-			return http.request(xCodea_server..'/file_'..(file and 'saved' or 'deleted'),file_success,xc.connection_error,
-				{method = 'POST', headers = {project=xc.project,file=file or delete,chk=xc.adler32(file and data or '')}})
-		end
 		return xc.log_error('Invalid data received from poll!')
 	end
 	http.request(xCodea_server..'/poll',success,xc.connection_error,
 		{headers = {project=xc.project}})
 end
 
-function xc.adler32(data)
+function xc.adler32(data,len)
 	local a = 1
 	local b = 0
-	for i=1, #data do
+	for i=1, (len or #data) do
 		a = (a + data:byte(i)) % 65521
 		b = (b + a) % 65521
 	end
@@ -793,6 +810,7 @@ xCodea.restart = function()
 		xc._tween_update = tween.update
 		tween.update = function() end
 	end
+	xCodea._SANDBOX.parameter.clear()
 	xc.try_connect()
 end
 
