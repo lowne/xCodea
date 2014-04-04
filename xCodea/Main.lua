@@ -13,8 +13,12 @@ local xc = {} -- #xc
 function xc.make_sandbox()
 	local tab = xc.to_sandbox[1]
 	if not tab then
-		xc.hijack_update()
-		if xc.sandbox_started then return true end
+		if xc.sandbox_started then
+			if xCodea._SANDBOX.update and xc.do_update_hook then
+				xc.hijack_update()
+			end
+			return true
+		end
 		return xc.start_sandbox()
 	end
 	--	xc.sandbox_started = nil
@@ -39,26 +43,28 @@ function xc.start_sandbox()
 end
 
 function xc.hijack_update()
-	if xCodea._SANDBOX.update and not xc.has_update_hook then
-		if not xc.draw_original then xc.draw_original = xCodea._SANDBOX.draw end
-		local found = xc.find_update_hook(xc.draw_original)
-		if found then
-			xc.vlog('Found update() hook')
-			local success = loadstring(found,'>>[xCodea]')
+	--	if not xc.draw_original then
+	--	xc.draw_original = xCodea._SANDBOX.draw
+	--	end
+	--	local found = xc.find_update_hook(xc.draw_original)
+	local found = xc.find_update_hook()
+	if found then
+		xc.vlog('Found update() hook')
+		local success = loadstring(found,'>>[xCodea]')
+		if success then
+			setfenv(success,xCodea._SANDBOX)
+			success = xpcall(success,xc.error_handler)
 			if success then
-				setfenv(success,xCodea._SANDBOX)
-				success = xpcall(success,xc.error_handler)
-				if success then
-					xc.vlog('update() hook successfully hijacked')
-					xc.has_update_hook = true
-				end
+				xc.vlog('update() hook successfully hijacked')
+				xc.has_update_hook = true
 			end
 		end
 	end
+	xc.do_update_hook = nil
 end
 
-function xc.find_update_hook(m)
-	--	local m = xCodea._SANDBOX.draw
+function xc.find_update_hook()
+	local m = xCodea._SANDBOX.draw
 	local result = ''
 	repeat
 		--		print('Searching for',tostring(m)..'()')
@@ -68,7 +74,10 @@ function xc.find_update_hook(m)
 		if not info then return end
 		local tab =	info.source:sub(3,-1)
 		--		print('Found in',tab)
-		if tab=='[xCodea]' then return end
+		if tab=='[xCodea]' then
+			xc.has_update_hook = true
+			return
+		end
 		local source_tab = readProjectTab(tab)
 		local source_arr = xc.splitstring(source_tab,'\n')
 		local chunk = table.concat(source_arr,'\n',info.linedefined,info.lastlinedefined) -- #string
@@ -239,10 +248,11 @@ end
 
 
 function xc.draw_status()
+	pushStyle()
+	pushMatrix()
 	resetStyle()
-	ortho()
+	--	ortho()
 	resetMatrix()
-	--	pushStyle()
 	noStroke()
 	if xc.error then fill(255,0,0,60) rect(0,0,WIDTH,HEIGHT) end
 	textMode(CORNER)
@@ -271,7 +281,8 @@ function xc.draw_status()
 	fill(200,240,255)
 	fontSize(80)
 	text('xCodea',WIDTH/2,HEIGHT-40)
-	--	popStyle()
+	popStyle()
+	popMatrix()
 end
 
 function xc.null() end
@@ -560,6 +571,7 @@ function xc.poll()
 				if file then chk = xc.adler32(readProjectTab(path)) end
 				if proj==xc.project or name~='Main' then
 					xc.has_update_hook = nil
+					xc.do_update_hook = true
 					xc.error = nil
 					if file then table.insert(xc.to_sandbox,path) end
 				end
@@ -801,8 +813,8 @@ xCodea.restart = function()
 	xc.log_buffer = ''
 	xc.status = {}
 	xc.to_sandbox = {}
-	xc.sandbox_started=nil
-
+	xc.sandbox_started = nil
+	xc.has_update_hook = nil
 	output.clear()
 	--	tween.stop(xc.tween)
 	--	tween.stop(xc.ltween)
