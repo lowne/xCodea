@@ -251,8 +251,8 @@ function xc.draw_status()
 	pushStyle()
 	pushMatrix()
 	resetStyle()
-	--	ortho()
-	resetMatrix()
+	ortho()
+	--	resetMatrix()
 	noStroke()
 	if xc.error then fill(255,0,0,60) rect(0,0,WIDTH,HEIGHT) end
 	textMode(CORNER)
@@ -450,7 +450,7 @@ function xc.connected(data,status,headers)
 		local pfiles = listProjectTabs(proj)
 		for _,pfile in pairs(pfiles) do
 			local file = proj..':'..pfile
-			if proj==xc.project or pfile~='Main' then table.insert(xc.to_sandbox,file) end
+			if proj==xc.project or (proj~='xCodea' and pfile~='Main') then table.insert(xc.to_sandbox,file) end
 			local chk = xc.adler32(readProjectTab(file))
 			if chk ~= remotefiles[file] then
 				sendfiles[file] = true
