@@ -9,7 +9,7 @@ from time import sleep
 #---------------------- utility functions
 #----------------------------------------
 
-#POLLING_MAX_WAIT = 0 # TODO long poll disabled until http.request bug is fixed
+#POLLING_MAX_WAIT = 4 # TODO long poll disabled until http.request bug is fixed
 POLLING_WAIT = 0.2
 RED='31'
 GREEN='32'

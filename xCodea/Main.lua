@@ -50,9 +50,9 @@ function xc.hijack_update()
 	local found = xc.find_update_hook()
 	if found then
 		xc.vlog('Found update() hook')
-		local success = loadstring(found,'>>[xCodea]')
+		local success = load(found,'>>[xCodea]','t',xCodea._SANDBOX) -- lua 5.3
 		if success then
-			setfenv(success,xCodea._SANDBOX)
+			--setfenv(success,xCodea._SANDBOX) -- lua 5.3
 			success = xpcall(success,xc.error_handler)
 			if success then
 				xc.vlog('update() hook successfully hijacked')
@@ -175,22 +175,22 @@ function xc.eval(code,name,log)
 	--env = env or xCodea._SANDBOX
 	local success, error, is_repl
 	if log then
-		success, error = loadstring('return '..code,name)
+		success, error = load('return '..code,name,'t',xCodea._SANDBOX) -- lua 5.3
 		if success then is_repl = true end
 	end
-	if not success then success,error = loadstring(code,name) end
+	if not success then success,error = load(code,name,'t',xCodea._SANDBOX) end -- lua 5.3
 	if not success then
-		xc.vlog('error in loadstring()')
+		xc.vlog('error in load()')
 		return xc.sandbox_error(error,false)
 	end
 	if code:match "^%s*(.-)%s*$"~='xCodea.restart()' then
-		setfenv(success,xCodea._SANDBOX)
+	    --TODO need to un-setfenv for .restart() ?
+		--setfenv(success,xCodea._SANDBOX) -- lua 5.3
 	else
 		is_repl = false
 	end
 	local results = {xpcall(success, xc.error_handler)}
 	success = results[1]
-	--setfenv(1,_G) -- FIXME test??
 	if success then
 		if is_repl then
 			--			return xc.log('[eval] '..name..' => '..	xc.pretty_print(results[2]),unpack(results,2))
@@ -251,8 +251,8 @@ function xc.draw_status()
 	pushStyle()
 	pushMatrix()
 	resetStyle()
-	ortho()
-	--	resetMatrix()
+	--	ortho()
+	resetMatrix()
 	noStroke()
 	if xc.error then fill(255,0,0,60) rect(0,0,WIDTH,HEIGHT) end
 	textMode(CORNER)
@@ -747,13 +747,18 @@ xCodea.restart = function()
 		--		keyboard = function(_) end,
 		--		orientationChanged = function(_) end,
 		--		collide = function(_) end,
-		loadstring = function(code,name)
-			local success, error = _G.loadstring(code,name)
-			if success then
-				setfenv(success, xCodea._SANDBOX)
-			end
-			return success,error
-		end,
+		
+		-- lua 5.3, remove as deprecated
+		-- loadstring = function(code,name) 
+		--	local success, error = _G.loadstring(code,name)
+		--	if success then
+		--		setfenv(success, xCodea._SANDBOX)
+		--	end
+		--	return success,error
+		-- end,
+
+        -- FIXME everything below is outdated due to lua 5.3
+        -- FIXME load(...) with global ENV is almost certainly broken
 		-- TODO as of 1.5.5 almost everything is allowed in Codea's sandbox
 		-- only things removed are arg, os.execute and os.exit
 		-- so: load,loadstring,dofile, require, packages etc are all there!
@@ -816,6 +821,7 @@ xCodea.restart = function()
 	xc.sandbox_started = nil
 	xc.has_update_hook = nil
 	output.clear()
+	tween.stopAll()
 	--	tween.stop(xc.tween)
 	--	tween.stop(xc.ltween)
 	if not xc._tween_update then
